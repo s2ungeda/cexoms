@@ -1,0 +1,223 @@
+# Risk Management Configuration
+
+# Multi-Account Risk Settings
+multi_account_risk:
+  # Update intervals
+  account_update_interval: 5s
+  global_update_interval: 10s
+  
+  # Alert settings
+  alerts_enabled: true
+  alert_cooldown: 5m
+  alert_channels:
+    - type: log
+      level: warning
+    - type: webhook
+      url: "${RISK_WEBHOOK_URL}"
+      min_severity: high
+  
+  # VaR calculation
+  var_confidence: 0.99      # 99% confidence level
+  var_time_horizon: 24h     # 1-day VaR
+  var_method: historical    # historical, parametric, monte_carlo
+  
+  # Stress testing
+  stress_test_interval: 1h
+  stress_test_scenarios:
+    - name: "Market Crash"
+      market_shock: -0.20   # 20% drop
+      volume_shock: 2.0     # 2x volume
+      volatility_mul: 3.0   # 3x volatility
+    
+    - name: "Flash Crash"
+      market_shock: -0.10   # 10% drop
+      volume_shock: 5.0     # 5x volume
+      volatility_mul: 5.0   # 5x volatility
+    
+    - name: "Liquidity Crisis"
+      market_shock: -0.05   # 5% drop
+      volume_shock: 0.1     # 10% of normal volume
+      volatility_mul: 2.0   # 2x volatility
+
+# Global Risk Limits
+global_risk_limits:
+  # Exposure limits
+  max_total_exposure_usdt: 10000000      # $10M total
+  max_net_exposure_usdt: 5000000         # $5M net
+  max_exchange_exposure_usdt: 3000000    # $3M per exchange
+  max_strategy_exposure_usdt: 2000000    # $2M per strategy
+  
+  # Position limits
+  max_concentration_ratio: 0.20          # 20% max in single position
+  max_position_size_usdt: 500000         # $500k max position
+  max_accounts_per_strategy: 10          # Max accounts per strategy
+  
+  # Loss limits
+  max_daily_loss_usdt: 100000            # $100k daily loss limit
+  max_drawdown_percent: 15               # 15% max drawdown
+  
+  # Leverage limits
+  max_account_leverage: 10               # 10x max per account
+  max_global_leverage: 5                 # 5x max globally
+
+# Account-Level Risk Limits
+account_risk_limits:
+  # Default limits (can be overridden per account)
+  default:
+    max_position_usdt: 100000
+    max_leverage: 5
+    daily_loss_limit_usdt: 10000
+    max_drawdown_percent: 10
+    
+  # Strategy-specific limits
+  by_strategy:
+    arbitrage:
+      max_position_usdt: 50000
+      max_leverage: 2
+      daily_loss_limit_usdt: 5000
+      max_open_positions: 20
+    
+    market_making:
+      max_position_usdt: 30000
+      max_leverage: 1
+      daily_loss_limit_usdt: 3000
+      max_open_positions: 50
+    
+    trend_following:
+      max_position_usdt: 100000
+      max_leverage: 3
+      daily_loss_limit_usdt: 10000
+      max_open_positions: 10
+    
+    scalping:
+      max_position_usdt: 20000
+      max_leverage: 5
+      daily_loss_limit_usdt: 2000
+      max_open_positions: 100
+
+# Risk Rules
+risk_rules:
+  # Correlation limits
+  correlation_limit:
+    enabled: true
+    max_correlated_exposure: 0.5  # 50% of total in correlated positions
+    correlation_threshold: 0.7     # Positions with >0.7 correlation
+    
+  # Time-based restrictions
+  trading_hours:
+    enabled: false
+    restricted_hours:
+      - start: "00:00"
+        end: "01:00"
+        reason: "Daily settlement"
+    
+  # Market condition rules
+  volatility_filter:
+    enabled: true
+    max_volatility_multiplier: 3.0  # Reject orders when vol > 3x normal
+    
+  # Account health rules
+  account_health:
+    enabled: true
+    min_margin_ratio: 0.2           # 20% minimum margin
+    max_consecutive_losses: 5       # Stop after 5 consecutive losses
+    cooldown_after_losses: 30m      # 30 min cooldown
+
+# Risk Aggregation Settings
+risk_aggregation:
+  # Historical data
+  history_retention: 7d
+  sample_interval: 5m
+  
+  # Correlation analysis
+  correlation_window: 100          # Number of periods
+  min_correlation: 0.3             # Minimum correlation to track
+  correlation_update_interval: 1h
+  
+  # Portfolio metrics
+  sharpe_ratio_period: 252         # Trading days for annualization
+  risk_free_rate: 0.02             # 2% annual risk-free rate
+  
+  # Diversification targets
+  target_diversification_ratio: 1.5
+  min_accounts_for_diversification: 3
+
+# Risk Monitoring
+monitoring:
+  # Dashboards
+  dashboard_refresh_interval: 10s
+  
+  # Metrics to track
+  tracked_metrics:
+    - total_exposure
+    - net_exposure
+    - leverage
+    - pnl
+    - drawdown
+    - var
+    - correlation_matrix
+    
+  # Alerts
+  alert_thresholds:
+    exposure_utilization: 0.8      # Alert at 80% of limit
+    drawdown_warning: 0.1          # Alert at 10% drawdown
+    leverage_warning: 0.8          # Alert at 80% of max leverage
+    correlation_warning: 0.8       # Alert when correlation > 0.8
+    
+  # Reports
+  automated_reports:
+    daily_risk_report:
+      enabled: true
+      time: "00:00"
+      recipients: ["risk@example.com"]
+    
+    weekly_risk_summary:
+      enabled: true
+      day: "sunday"
+      time: "18:00"
+      recipients: ["management@example.com"]
+
+# Emergency Controls
+emergency:
+  # Circuit breakers
+  circuit_breakers:
+    daily_loss_breaker:
+      enabled: true
+      threshold_percent: 5         # Stop all trading at 5% daily loss
+      cooldown: 1h
+    
+    drawdown_breaker:
+      enabled: true
+      threshold_percent: 10        # Stop all trading at 10% drawdown
+      cooldown: 2h
+    
+    volatility_breaker:
+      enabled: true
+      vol_multiplier: 5            # Stop trading when vol > 5x normal
+      cooldown: 30m
+  
+  # Emergency actions
+  emergency_actions:
+    - action: "close_all_positions"
+      trigger: "circuit_breaker_triggered"
+      
+    - action: "disable_new_orders"
+      trigger: "risk_limit_breach"
+      
+    - action: "reduce_leverage"
+      trigger: "margin_warning"
+      target_leverage: 1
+
+# Performance Impact Settings
+performance:
+  # Risk check caching
+  cache_risk_checks: true
+  cache_ttl: 1s
+  
+  # Parallel processing
+  parallel_account_checks: true
+  max_concurrent_checks: 10
+  
+  # Optimization
+  skip_zero_position_accounts: true
+  batch_correlation_updates: true
