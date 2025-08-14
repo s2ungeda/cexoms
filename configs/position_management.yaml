@@ -1,0 +1,214 @@
+# Position Management Configuration
+
+# Multi-Account Position Settings
+multi_account_positions:
+  # Update settings
+  update_interval: 5s
+  batch_updates: true
+  batch_size: 100
+  
+  # Position limits
+  max_positions_per_account: 100
+  max_global_positions: 1000
+  max_position_value_usdt: 1000000
+  
+  # Hedge detection
+  hedge_detection_enabled: true
+  perfect_hedge_threshold: 0.95   # 95% hedged = perfect hedge
+  partial_hedge_threshold: 0.50   # 50% hedged = partial hedge
+  
+  # Alerts
+  alerts_enabled: true
+  margin_alert_threshold: 0.80    # Alert at 80% margin usage
+  pnl_alert_threshold: -10000     # Alert at $10k loss
+
+# Position Optimization
+position_optimization:
+  # Risk parameters
+  max_portfolio_risk: 0.02        # 2% portfolio risk
+  max_position_risk: 0.01         # 1% per position risk
+  target_sharpe_ratio: 1.5
+  
+  # Position sizing
+  min_position_size_usdt: 100
+  max_position_size_usdt: 100000
+  position_size_increment: 100
+  
+  # Correlation
+  use_correlation: true
+  correlation_window: 100
+  correlation_update_interval: 1h
+  
+  # Optimization method
+  optimization_method: "risk_parity"  # kelly, equal_weight, risk_parity, max_sharpe
+  rebalance_threshold: 0.10           # 10% deviation triggers rebalance
+
+# Position Sizing Strategies
+position_sizing:
+  kelly_criterion:
+    enabled: true
+    safety_factor: 0.25           # Use 25% of Kelly fraction
+    max_kelly_fraction: 0.20      # Never exceed 20% on single position
+    
+  fixed_fractional:
+    enabled: false
+    fraction: 0.02                # 2% of capital per position
+    
+  volatility_based:
+    enabled: true
+    target_volatility: 0.15       # 15% annual volatility
+    lookback_period: 20           # 20 periods for volatility calc
+    
+  atr_based:
+    enabled: true
+    atr_multiplier: 2.0           # 2x ATR for position sizing
+    atr_period: 14
+
+# Risk Management Rules
+risk_rules:
+  # Position-level rules
+  position_rules:
+    max_loss_per_position: 0.01   # 1% max loss per position
+    stop_loss_required: true
+    min_risk_reward_ratio: 1.5    # 1.5:1 minimum
+    
+  # Account-level rules
+  account_rules:
+    max_correlation_exposure: 0.5  # 50% in correlated positions
+    max_sector_concentration: 0.3  # 30% in single sector
+    max_directional_bias: 0.7      # 70% long or short
+    
+  # Time-based rules
+  time_rules:
+    max_holding_period_days: 30    # Close positions after 30 days
+    review_stale_positions: true
+    stale_position_days: 7
+
+# Hedge Management
+hedge_management:
+  # Automatic hedging
+  auto_hedge_enabled: false
+  hedge_trigger_threshold: 0.8     # Hedge when exposure > 80%
+  
+  # Hedge strategies
+  strategies:
+    pairs_trading:
+      enabled: true
+      correlation_threshold: 0.8   # Min correlation for pairs
+      spread_entry: 2.0            # Enter at 2 std dev
+      spread_exit: 0.5             # Exit at 0.5 std dev
+      
+    portfolio_hedge:
+      enabled: true
+      hedge_instrument: "BTC"      # Use BTC as portfolio hedge
+      hedge_ratio: 0.3             # 30% hedge ratio
+      
+    delta_neutral:
+      enabled: false
+      rebalance_frequency: "hourly"
+      delta_threshold: 0.1         # Rebalance when delta > 0.1
+
+# Position Monitoring
+monitoring:
+  # Real-time monitoring
+  realtime_updates: true
+  update_frequency: 1s
+  
+  # Metrics to track
+  tracked_metrics:
+    - position_count
+    - total_exposure
+    - net_exposure
+    - unrealized_pnl
+    - margin_usage
+    - leverage
+    - correlation_matrix
+    - hedge_effectiveness
+    
+  # Dashboards
+  position_dashboard:
+    refresh_interval: 5s
+    show_global_view: true
+    show_account_breakdown: true
+    show_strategy_breakdown: true
+    show_hedge_pairs: true
+    
+  # Reports
+  position_reports:
+    daily_summary:
+      enabled: true
+      time: "16:00"
+      include_pnl: true
+      include_risk_metrics: true
+      
+    weekly_analysis:
+      enabled: true
+      day: "sunday"
+      time: "18:00"
+      include_performance: true
+      include_optimization: true
+
+# Performance Tracking
+performance:
+  # P&L tracking
+  track_realized_pnl: true
+  track_unrealized_pnl: true
+  track_fees: true
+  
+  # Attribution
+  performance_attribution:
+    by_account: true
+    by_strategy: true
+    by_symbol: true
+    by_timeframe: true
+    
+  # Benchmarks
+  benchmarks:
+    - name: "BTC"
+      symbol: "BTCUSDT"
+      weight: 0.5
+      
+    - name: "ETH"
+      symbol: "ETHUSDT"  
+      weight: 0.3
+      
+    - name: "Market"
+      symbol: "TOTAL_MARKET_CAP"
+      weight: 0.2
+
+# Emergency Controls
+emergency:
+  # Position limits
+  emergency_close_all:
+    enabled: true
+    trigger_loss_percent: 10      # Close all at 10% portfolio loss
+    
+  # Reduce exposure
+  reduce_exposure:
+    enabled: true
+    trigger_drawdown: 0.15        # Reduce at 15% drawdown
+    target_reduction: 0.5         # Reduce exposure by 50%
+    
+  # Freeze new positions
+  freeze_positions:
+    enabled: true
+    trigger_consecutive_losses: 5
+    freeze_duration: 1h
+
+# Data Management
+data_management:
+  # Position history
+  position_history_retention: 90d
+  
+  # Archival
+  archive_closed_positions: true
+  archive_after_days: 30
+  
+  # Cleanup
+  cleanup_interval: 24h
+  remove_zero_positions: true
+  
+  # Backup
+  backup_enabled: true
+  backup_interval: 1h
+  backup_location: "/backups/positions"
