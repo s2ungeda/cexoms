@@ -1,0 +1,143 @@
+# OMS Configuration
+
+app:
+  name: "mExOms"
+  version: "1.0.0"
+  environment: "development"
+  log_level: "info"
+
+# NATS Configuration
+nats:
+  url: "nats://localhost:4222"
+  cluster_id: "oms-cluster"
+  client_id: "oms-client"
+  jetstream:
+    enabled: true
+    streams:
+      - name: "ORDERS"
+        subjects: ["orders.>"]
+        retention: "limits"
+        max_age: "24h"
+        max_msgs: 1000000
+      - name: "MARKET"
+        subjects: ["market.>"]
+        retention: "interest"
+        max_age: "1h"
+      - name: "POSITIONS"
+        subjects: ["positions.>"]
+        retention: "limits"
+        max_msgs: 100000
+
+# Redis Configuration
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  pool_size: 100
+  min_idle_conns: 10
+
+# PostgreSQL Configuration
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "oms_password"
+  database: "oms_db"
+  ssl_mode: "disable"
+  max_open_conns: 50
+  max_idle_conns: 10
+
+# Vault Configuration
+vault:
+  addr: "http://localhost:8200"
+  token: "root-token"
+  mount_path: "secret"
+  renewal_interval: "1h"
+
+# gRPC Configuration
+grpc:
+  port: 50051
+  max_recv_msg_size: 104857600  # 100MB
+  max_send_msg_size: 104857600  # 100MB
+  keepalive:
+    time: "10s"
+    timeout: "20s"
+
+# Core Engine Configuration
+core_engine:
+  cpu_affinity:
+    enabled: true
+    cores: [2, 3]
+  ring_buffer_size: 1048576  # 1MB
+  max_orders_per_second: 100000
+  risk_check_timeout_us: 50
+
+# Exchange Configuration
+exchanges:
+  binance:
+    spot:
+      enabled: true
+      api_endpoint: "https://api.binance.com"
+      ws_endpoint: "wss://stream.binance.com:9443"
+      test_net: false
+      rate_limits:
+        weight_per_minute: 1200
+        orders_per_second: 10
+        orders_per_day: 200000
+    futures:
+      enabled: true
+      api_endpoint: "https://fapi.binance.com"
+      ws_endpoint: "wss://fstream.binance.com"
+      test_net: false
+      rate_limits:
+        weight_per_minute: 2400
+        orders_per_second: 30
+        orders_per_day: 200000
+  
+  bybit:
+    enabled: false
+    api_endpoint: "https://api.bybit.com"
+    ws_endpoint: "wss://stream.bybit.com"
+  
+  okx:
+    enabled: false
+    api_endpoint: "https://www.okx.com"
+    ws_endpoint: "wss://ws.okx.com:8443"
+
+# Risk Management
+risk_management:
+  max_position_size_usd: 1000000
+  max_leverage: 20
+  max_daily_loss_usd: 50000
+  price_deviation_threshold: 0.05  # 5%
+  order_rate_limit:
+    per_second: 100
+    per_minute: 3000
+
+# Monitoring
+monitoring:
+  prometheus:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  health_check:
+    enabled: true
+    port: 8080
+    path: "/health"
+
+# Security
+security:
+  api_key_rotation_days: 30
+  encryption:
+    algorithm: "AES-256-GCM"
+    key_derivation: "PBKDF2"
+  ip_whitelist:
+    enabled: false
+    ips: []
+  
+# Performance Tuning
+performance:
+  gc_percent: 100
+  max_procs: 0  # 0 = use all CPUs
+  tcp_nodelay: true
+  tcp_quickack: true

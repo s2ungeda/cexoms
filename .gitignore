@@ -1,0 +1,77 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.a
+*.out
+bin/
+build/
+
+# Go
+*.test
+*.cover
+vendor/
+go.sum
+
+# C++
+*.d
+*.slo
+*.lo
+*.obj
+*.lai
+*.la
+*.lib
+*.pch
+*.gch
+*.ilk
+*.pdb
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+*.pem
+*.key
+*.crt
+
+# Logs
+*.log
+logs/
+
+# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# Build artifacts
+dist/
+target/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Secrets
+secrets/
+*.secret
+vault-token

@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package oms.orders.v1;
+
+option go_package = "github.com/mExOms/oms/proto/orders";
+
+import "google/protobuf/timestamp.proto";
+
+// OrderService provides order management operations
+service OrderService {
+  // CreateOrder creates a new order
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  
+  // CancelOrder cancels an existing order
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  
+  // GetOrder retrieves order details
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  
+  // ListOrders lists orders with filtering
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  
+  // StreamOrders streams order updates
+  rpc StreamOrders(StreamOrdersRequest) returns (stream Order);
+}
+
+// Order message
+message Order {
+  string id = 1;
+  string client_order_id = 2;
+  string exchange = 3;
+  string symbol = 4;
+  Side side = 5;
+  OrderType type = 6;
+  double price = 7;
+  double quantity = 8;
+  double executed_quantity = 9;
+  OrderStatus status = 10;
+  TimeInForce time_in_force = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+// Side enum
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  SIDE_BUY = 1;
+  SIDE_SELL = 2;
+}
+
+// OrderType enum
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  ORDER_TYPE_MARKET = 1;
+  ORDER_TYPE_LIMIT = 2;
+  ORDER_TYPE_STOP = 3;
+  ORDER_TYPE_STOP_LIMIT = 4;
+  ORDER_TYPE_TAKE_PROFIT = 5;
+  ORDER_TYPE_TAKE_PROFIT_LIMIT = 6;
+}
+
+// OrderStatus enum
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_NEW = 1;
+  ORDER_STATUS_PARTIALLY_FILLED = 2;
+  ORDER_STATUS_FILLED = 3;
+  ORDER_STATUS_CANCELED = 4;
+  ORDER_STATUS_REJECTED = 5;
+  ORDER_STATUS_EXPIRED = 6;
+}
+
+// TimeInForce enum
+enum TimeInForce {
+  TIME_IN_FORCE_UNSPECIFIED = 0;
+  TIME_IN_FORCE_GTC = 1;  // Good Till Cancel
+  TIME_IN_FORCE_IOC = 2;  // Immediate or Cancel
+  TIME_IN_FORCE_FOK = 3;  // Fill or Kill
+  TIME_IN_FORCE_GTX = 4;  // Good Till Crossing
+}
+
+// CreateOrderRequest
+message CreateOrderRequest {
+  string client_order_id = 1;
+  string exchange = 2;
+  string symbol = 3;
+  Side side = 4;
+  OrderType type = 5;
+  double price = 6;
+  double quantity = 7;
+  TimeInForce time_in_force = 8;
+}
+
+// CreateOrderResponse
+message CreateOrderResponse {
+  Order order = 1;
+}
+
+// CancelOrderRequest
+message CancelOrderRequest {
+  string exchange = 1;
+  string symbol = 2;
+  string order_id = 3;
+  string client_order_id = 4;
+}
+
+// CancelOrderResponse
+message CancelOrderResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// GetOrderRequest
+message GetOrderRequest {
+  string exchange = 1;
+  string symbol = 2;
+  string order_id = 3;
+  string client_order_id = 4;
+}
+
+// GetOrderResponse
+message GetOrderResponse {
+  Order order = 1;
+}
+
+// ListOrdersRequest
+message ListOrdersRequest {
+  string exchange = 1;
+  string symbol = 2;
+  OrderStatus status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+// ListOrdersResponse
+message ListOrdersResponse {
+  repeated Order orders = 1;
+  int32 total = 2;
+}
+
+// StreamOrdersRequest
+message StreamOrdersRequest {
+  repeated string exchanges = 1;
+  repeated string symbols = 2;
+}
