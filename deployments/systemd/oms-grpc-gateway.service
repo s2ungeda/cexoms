@@ -1,0 +1,38 @@
+[Unit]
+Description=OMS gRPC API Gateway
+Documentation=https://github.com/mExOms/oms
+After=network.target nats.service oms-engine.service
+
+[Service]
+Type=simple
+User=oms
+Group=oms
+WorkingDirectory=/opt/oms
+
+# Binary and configuration
+ExecStart=/opt/oms/bin/grpc-gateway
+Environment="CONFIG_FILE=/opt/oms/configs/grpc_gateway.yaml"
+Environment="TLS_CERT=/opt/oms/certs/server.crt"
+Environment="TLS_KEY=/opt/oms/certs/server.key"
+
+# CPU affinity
+CPUAffinity=6
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=oms-grpc-gateway
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/opt/oms/data
+
+[Install]
+WantedBy=multi-user.target

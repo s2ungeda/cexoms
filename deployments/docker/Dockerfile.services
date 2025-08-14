@@ -1,0 +1,78 @@
+# Build stage
+FROM golang:1.21-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git make
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source files
+COPY . .
+
+# Build all services
+RUN make build-services
+
+# Runtime base image
+FROM alpine:3.18 AS runtime-base
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create OMS user
+RUN adduser -D -s /bin/false -h /opt/oms oms
+
+# Set working directory
+WORKDIR /opt/oms
+
+# Create directories
+RUN mkdir -p /opt/oms/configs /opt/oms/data/logs && \
+    chown -R oms:oms /opt/oms
+
+# Binance Spot service
+FROM runtime-base AS binance-spot
+COPY --from=builder /build/bin/binance-spot /opt/oms/bin/
+USER oms
+ENTRYPOINT ["/opt/oms/bin/binance-spot"]
+
+# Binance Futures service
+FROM runtime-base AS binance-futures
+COPY --from=builder /build/bin/binance-futures /opt/oms/bin/
+USER oms
+ENTRYPOINT ["/opt/oms/bin/binance-futures"]
+
+# gRPC Gateway service
+FROM runtime-base AS grpc-gateway
+COPY --from=builder /build/bin/grpc-gateway /opt/oms/bin/
+USER oms
+EXPOSE 50051
+ENTRYPOINT ["/opt/oms/bin/grpc-gateway"]
+
+# Monitor service
+FROM runtime-base AS monitor
+COPY --from=builder /build/bin/monitor /opt/oms/bin/
+USER oms
+EXPOSE 9090
+ENTRYPOINT ["/opt/oms/bin/monitor"]
+
+# Router service
+FROM runtime-base AS router
+COPY --from=builder /build/bin/order-router /opt/oms/bin/
+USER oms
+ENTRYPOINT ["/opt/oms/bin/order-router"]
+
+# Risk engine service
+FROM runtime-base AS risk-engine
+COPY --from=builder /build/bin/risk-engine /opt/oms/bin/
+USER oms
+ENTRYPOINT ["/opt/oms/bin/risk-engine"]
+
+# Position manager service
+FROM runtime-base AS position-manager
+COPY --from=builder /build/bin/position-manager /opt/oms/bin/
+USER oms
+ENTRYPOINT ["/opt/oms/bin/position-manager"]

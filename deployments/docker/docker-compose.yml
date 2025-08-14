@@ -1,0 +1,173 @@
+version: '3.8'
+
+services:
+  # NATS messaging server
+  nats:
+    image: nats:2.10.5-alpine
+    container_name: oms-nats
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP monitoring
+    volumes:
+      - nats-data:/data
+      - ./configs/nats.conf:/etc/nats/nats.conf:ro
+    networks:
+      - oms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # HashiCorp Vault for secrets
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: oms-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault-data:/vault/data
+    networks:
+      - oms-network
+    restart: unless-stopped
+
+  # C++ Core Engine
+  oms-engine:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.engine
+    container_name: oms-engine
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - ./configs:/opt/oms/configs:ro
+      - oms-data:/opt/oms/data
+      - /dev/shm:/dev/shm
+    environment:
+      - CONFIG_FILE=/opt/oms/configs/engine.yaml
+    networks:
+      - oms-network
+    restart: unless-stopped
+    cpu_count: 2
+    cpus: 2.0
+    mem_limit: 2g
+    privileged: true  # For shared memory access
+
+  # Binance Spot Connector
+  binance-spot:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.services
+      target: binance-spot
+    container_name: oms-binance-spot
+    depends_on:
+      - nats
+      - vault
+      - oms-engine
+    volumes:
+      - ./configs:/opt/oms/configs:ro
+      - oms-data:/opt/oms/data
+    environment:
+      - CONFIG_FILE=/opt/oms/configs/binance_spot.yaml
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=root-token
+    networks:
+      - oms-network
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 1g
+
+  # Binance Futures Connector
+  binance-futures:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.services
+      target: binance-futures
+    container_name: oms-binance-futures
+    depends_on:
+      - nats
+      - vault
+      - oms-engine
+    volumes:
+      - ./configs:/opt/oms/configs:ro
+      - oms-data:/opt/oms/data
+    environment:
+      - CONFIG_FILE=/opt/oms/configs/binance_futures.yaml
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=root-token
+    networks:
+      - oms-network
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 1g
+
+  # gRPC API Gateway
+  grpc-gateway:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.services
+      target: grpc-gateway
+    container_name: oms-grpc-gateway
+    depends_on:
+      - nats
+      - oms-engine
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./configs:/opt/oms/configs:ro
+      - ./certs:/opt/oms/certs:ro
+    environment:
+      - CONFIG_FILE=/opt/oms/configs/grpc_gateway.yaml
+      - TLS_CERT=/opt/oms/certs/server.crt
+      - TLS_KEY=/opt/oms/certs/server.key
+    networks:
+      - oms-network
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 512m
+
+  # Monitoring service
+  monitor:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.services
+      target: monitor
+    container_name: oms-monitor
+    depends_on:
+      - nats
+      - oms-engine
+    ports:
+      - "9090:9090"  # Metrics endpoint
+    volumes:
+      - ./configs:/opt/oms/configs:ro
+      - oms-data:/opt/oms/data:ro
+    environment:
+      - CONFIG_FILE=/opt/oms/configs/monitor.yaml
+    networks:
+      - oms-network
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
+
+networks:
+  oms-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  nats-data:
+    driver: local
+  vault-data:
+    driver: local
+  oms-data:
+    driver: local

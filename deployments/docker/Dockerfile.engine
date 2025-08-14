@@ -1,0 +1,59 @@
+# Build stage
+FROM ubuntu:22.04 AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    g++ \
+    libssl-dev \
+    libprotobuf-dev \
+    protobuf-compiler \
+    libnats-dev \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /build
+
+# Copy source files
+COPY core/ ./core/
+COPY pkg/proto/ ./pkg/proto/
+COPY CMakeLists.txt ./
+
+# Build C++ core
+RUN mkdir -p build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    make -j$(nproc)
+
+# Runtime stage
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    libprotobuf23 \
+    libnats2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create OMS user
+RUN useradd -r -s /bin/false -m -d /opt/oms oms
+
+# Set working directory
+WORKDIR /opt/oms
+
+# Copy binary from build stage
+COPY --from=builder /build/build/bin/oms-engine /opt/oms/bin/
+
+# Create necessary directories
+RUN mkdir -p /opt/oms/configs /opt/oms/data/logs /opt/oms/data/snapshots && \
+    chown -R oms:oms /opt/oms
+
+# Switch to non-root user
+USER oms
+
+# Expose metrics port (if applicable)
+EXPOSE 9091
+
+# Set entrypoint
+ENTRYPOINT ["/opt/oms/bin/oms-engine"]

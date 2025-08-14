@@ -1,0 +1,30 @@
+[Unit]
+Description=NATS Server for OMS
+Documentation=https://nats.io/documentation/
+After=network.target
+
+[Service]
+Type=simple
+User=nats
+Group=nats
+
+# NATS server binary
+ExecStart=/usr/local/bin/nats-server -c /etc/nats/oms-nats.conf
+
+# Performance tuning
+CPUAffinity=0 1
+Nice=-10
+LimitNOFILE=65536
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nats-oms
+
+[Install]
+WantedBy=multi-user.target
