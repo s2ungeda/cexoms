@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package oms.v1;
+
+option go_package = "github.com/mExOms/oms/pkg/proto/oms/v1;omsv1";
+
+// OrderSide represents the side of an order
+enum OrderSide {
+    ORDER_SIDE_UNSPECIFIED = 0;
+    ORDER_SIDE_BUY = 1;
+    ORDER_SIDE_SELL = 2;
+}
+
+// OrderType represents the type of an order
+enum OrderType {
+    ORDER_TYPE_UNSPECIFIED = 0;
+    ORDER_TYPE_MARKET = 1;
+    ORDER_TYPE_LIMIT = 2;
+    ORDER_TYPE_STOP_LOSS = 3;
+    ORDER_TYPE_STOP_LOSS_LIMIT = 4;
+    ORDER_TYPE_TAKE_PROFIT = 5;
+    ORDER_TYPE_TAKE_PROFIT_LIMIT = 6;
+    ORDER_TYPE_LIMIT_MAKER = 7;
+}
+
+// OrderStatus represents the status of an order
+enum OrderStatus {
+    ORDER_STATUS_UNSPECIFIED = 0;
+    ORDER_STATUS_NEW = 1;
+    ORDER_STATUS_PARTIALLY_FILLED = 2;
+    ORDER_STATUS_FILLED = 3;
+    ORDER_STATUS_CANCELED = 4;
+    ORDER_STATUS_PENDING_CANCEL = 5;
+    ORDER_STATUS_REJECTED = 6;
+    ORDER_STATUS_EXPIRED = 7;
+}
+
+// TimeInForce represents how long an order will remain active
+enum TimeInForce {
+    TIME_IN_FORCE_UNSPECIFIED = 0;
+    TIME_IN_FORCE_GTC = 1;  // Good Till Cancel
+    TIME_IN_FORCE_IOC = 2;  // Immediate or Cancel
+    TIME_IN_FORCE_FOK = 3;  // Fill or Kill
+    TIME_IN_FORCE_GTX = 4;  // Good Till Crossing (Post Only)
+}
+
+// Market type
+enum Market {
+    MARKET_UNSPECIFIED = 0;
+    MARKET_SPOT = 1;
+    MARKET_FUTURES = 2;
+}
+
+// Timestamp message
+message Timestamp {
+    int64 seconds = 1;
+    int32 nanos = 2;
+}
+
+// Decimal represents a decimal number
+message Decimal {
+    string value = 1;  // String representation to avoid precision loss
+}
+
+// PriceLevel represents a price level in the order book
+message PriceLevel {
+    Decimal price = 1;
+    Decimal quantity = 2;
+}

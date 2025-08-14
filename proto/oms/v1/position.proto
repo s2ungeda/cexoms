@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package oms.v1;
+
+option go_package = "github.com/mExOms/oms/pkg/proto/oms/v1;omsv1";
+
+import "oms/v1/common.proto";
+
+// Position represents a trading position
+message Position {
+    string symbol = 1;
+    string exchange = 2;
+    Market market = 3;
+    string side = 4;  // LONG or SHORT
+    Decimal quantity = 5;
+    Decimal entry_price = 6;
+    Decimal mark_price = 7;
+    Decimal unrealized_pnl = 8;
+    Decimal realized_pnl = 9;
+    int32 leverage = 10;
+    Decimal margin_used = 11;
+    Timestamp updated_at = 12;
+    
+    // Calculated fields
+    Decimal position_value = 13;
+    Decimal pnl_percent = 14;
+    Decimal margin_ratio = 15;
+}
+
+// AggregatedPosition represents positions aggregated across exchanges
+message AggregatedPosition {
+    string symbol = 1;
+    Decimal total_quantity = 2;
+    Decimal avg_entry_price = 3;
+    Decimal total_value = 4;
+    Decimal total_pnl = 5;
+    repeated Position positions = 6;
+}
+
+// GetPositionRequest for retrieving a specific position
+message GetPositionRequest {
+    string exchange = 1;
+    string symbol = 2;
+}
+
+// GetPositionResponse contains a single position
+message GetPositionResponse {
+    Position position = 1;
+}
+
+// ListPositionsRequest for listing multiple positions
+message ListPositionsRequest {
+    string exchange = 1;  // Optional, if empty returns all exchanges
+    Market market = 2;    // Optional filter
+}
+
+// ListPositionsResponse contains multiple positions
+message ListPositionsResponse {
+    repeated Position positions = 1;
+    int32 total = 2;
+}
+
+// GetAggregatedPositionsRequest for aggregated view
+message GetAggregatedPositionsRequest {
+    repeated string symbols = 1;  // Optional filter
+}
+
+// GetAggregatedPositionsResponse contains aggregated positions
+message GetAggregatedPositionsResponse {
+    repeated AggregatedPosition positions = 1;
+}
+
+// RiskMetrics contains risk-related metrics
+message RiskMetrics {
+    int32 position_count = 1;
+    Decimal total_value = 2;
+    Decimal total_margin_used = 3;
+    Decimal max_leverage = 4;
+    Decimal unrealized_pnl = 5;
+    Decimal realized_pnl = 6;
+    Decimal total_pnl = 7;
+    int64 updates_count = 8;
+    int64 reads_count = 9;
+    double avg_calc_time_us = 10;
+}
+
+// GetRiskMetricsRequest for risk metrics
+message GetRiskMetricsRequest {}
+
+// GetRiskMetricsResponse contains risk metrics
+message GetRiskMetricsResponse {
+    RiskMetrics metrics = 1;
+}

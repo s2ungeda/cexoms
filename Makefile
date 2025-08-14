@@ -40,14 +40,18 @@ build-services:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/binance-spot ./cmd/binance-spot/
 	$(GO) build -o $(BIN_DIR)/binance-futures ./cmd/binance-futures/
-	# $(GO) build -o $(BIN_DIR)/api-gateway ./cmd/api-gateway/
+	$(GO) build -o $(BIN_DIR)/grpc-gateway ./cmd/grpc-gateway/
+	$(GO) build -o $(BIN_DIR)/grpc-client ./cmd/grpc-client/
+	$(GO) build -o $(BIN_DIR)/test-grpc ./cmd/test-grpc/
 	# $(GO) build -o $(BIN_DIR)/risk-manager ./cmd/risk-manager/
 
 proto:
 	@echo "Generating protobuf files..."
-	protoc --go_out=. --go_opt=paths=source_relative \
-		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		$(PROTO_DIR)/**/*.proto
+	@mkdir -p pkg/proto
+	protoc -I $(PROTO_DIR) \
+		--go_out=pkg/proto --go_opt=paths=source_relative \
+		--go-grpc_out=pkg/proto --go-grpc_opt=paths=source_relative \
+		$(PROTO_DIR)/oms/v1/*.proto
 
 test:
 	@echo "Running Go tests..."

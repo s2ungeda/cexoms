@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package oms.v1;
+
+option go_package = "github.com/mExOms/oms/pkg/proto/oms/v1;omsv1";
+
+import "oms/v1/common.proto";
+
+// OrderBook represents the order book for a symbol
+message OrderBook {
+    string exchange = 1;
+    string symbol = 2;
+    repeated PriceLevel bids = 3;
+    repeated PriceLevel asks = 4;
+    Timestamp timestamp = 5;
+}
+
+// Trade represents a single trade
+message Trade {
+    string exchange = 1;
+    string symbol = 2;
+    string id = 3;
+    Decimal price = 4;
+    Decimal quantity = 5;
+    OrderSide side = 6;
+    Timestamp timestamp = 7;
+    bool is_buyer_maker = 8;
+}
+
+// Ticker represents ticker data
+message Ticker {
+    string exchange = 1;
+    string symbol = 2;
+    Decimal bid_price = 3;
+    Decimal bid_quantity = 4;
+    Decimal ask_price = 5;
+    Decimal ask_quantity = 6;
+    Decimal last_price = 7;
+    Decimal volume_24h = 8;
+    Decimal quote_volume_24h = 9;
+    Decimal open_price = 10;
+    Decimal high_price = 11;
+    Decimal low_price = 12;
+    Decimal prev_close_price = 13;
+    Decimal price_change = 14;
+    Decimal price_change_percent = 15;
+    Timestamp timestamp = 16;
+}
+
+// Kline represents candlestick data
+message Kline {
+    string exchange = 1;
+    string symbol = 2;
+    string interval = 3;  // 1m, 5m, 15m, 1h, 4h, 1d, etc.
+    Timestamp open_time = 4;
+    Decimal open = 5;
+    Decimal high = 6;
+    Decimal low = 7;
+    Decimal close = 8;
+    Decimal volume = 9;
+    Timestamp close_time = 10;
+    Decimal quote_volume = 11;
+    int32 trades = 12;
+}
+
+// Market data subscription requests
+message SubscribeRequest {
+    repeated string exchanges = 1;
+    repeated string symbols = 2;
+    repeated string channels = 3;  // ticker, orderbook, trades, klines
+}
+
+message UnsubscribeRequest {
+    repeated string exchanges = 1;
+    repeated string symbols = 2;
+    repeated string channels = 3;
+}
+
+// Market data streaming response
+message MarketDataUpdate {
+    oneof data {
+        OrderBook orderbook = 1;
+        Trade trade = 2;
+        Ticker ticker = 3;
+        Kline kline = 4;
+    }
+}
+
+// Get orderbook request
+message GetOrderBookRequest {
+    string exchange = 1;
+    string symbol = 2;
+    int32 limit = 3;  // Depth limit
+}
+
+// Get ticker request
+message GetTickerRequest {
+    string exchange = 1;
+    string symbol = 2;
+}
+
+// Get recent trades request
+message GetRecentTradesRequest {
+    string exchange = 1;
+    string symbol = 2;
+    int32 limit = 3;
+}
+
+// Get recent trades response
+message GetRecentTradesResponse {
+    repeated Trade trades = 1;
+}
+
+// Get klines request
+message GetKlinesRequest {
+    string exchange = 1;
+    string symbol = 2;
+    string interval = 3;
+    Timestamp start_time = 4;
+    Timestamp end_time = 5;
+    int32 limit = 6;
+}
+
+// Get klines response
+message GetKlinesResponse {
+    repeated Kline klines = 1;
+}

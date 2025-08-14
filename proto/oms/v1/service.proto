@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package oms.v1;
+
+option go_package = "github.com/mExOms/oms/pkg/proto/oms/v1;omsv1";
+
+import "oms/v1/order.proto";
+import "oms/v1/position.proto";
+import "oms/v1/market_data.proto";
+import "oms/v1/auth.proto";
+
+// OrderService handles order operations
+service OrderService {
+    // Create a new order
+    rpc CreateOrder(OrderRequest) returns (OrderResponse);
+    
+    // Cancel an existing order
+    rpc CancelOrder(CancelOrderRequest) returns (OrderResponse);
+    
+    // Get order details
+    rpc GetOrder(GetOrderRequest) returns (OrderResponse);
+    
+    // List orders with filters
+    rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+}
+
+// PositionService handles position queries
+service PositionService {
+    // Get a specific position
+    rpc GetPosition(GetPositionRequest) returns (GetPositionResponse);
+    
+    // List all positions
+    rpc ListPositions(ListPositionsRequest) returns (ListPositionsResponse);
+    
+    // Get aggregated positions across exchanges
+    rpc GetAggregatedPositions(GetAggregatedPositionsRequest) returns (GetAggregatedPositionsResponse);
+    
+    // Get risk metrics
+    rpc GetRiskMetrics(GetRiskMetricsRequest) returns (GetRiskMetricsResponse);
+}
+
+// MarketDataService handles market data
+service MarketDataService {
+    // Get current orderbook
+    rpc GetOrderBook(GetOrderBookRequest) returns (OrderBook);
+    
+    // Get ticker data
+    rpc GetTicker(GetTickerRequest) returns (Ticker);
+    
+    // Get recent trades
+    rpc GetRecentTrades(GetRecentTradesRequest) returns (GetRecentTradesResponse);
+    
+    // Get historical klines
+    rpc GetKlines(GetKlinesRequest) returns (GetKlinesResponse);
+    
+    // Subscribe to real-time market data
+    rpc Subscribe(SubscribeRequest) returns (stream MarketDataUpdate);
+}
+
+// AuthService handles authentication
+service AuthService {
+    // Authenticate and get token
+    rpc Authenticate(AuthRequest) returns (AuthResponse);
+    
+    // Refresh authentication token
+    rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+    
+    // Create new API key
+    rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+    
+    // List API keys
+    rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+    
+    // Revoke API key
+    rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse);
+}

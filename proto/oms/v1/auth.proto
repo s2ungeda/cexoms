@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package oms.v1;
+
+option go_package = "github.com/mExOms/oms/pkg/proto/oms/v1;omsv1";
+
+import "oms/v1/common.proto";
+
+// AuthRequest for API authentication
+message AuthRequest {
+    string api_key = 1;
+    string secret = 2;
+    string totp = 3;  // Optional 2FA code
+}
+
+// AuthResponse contains authentication token
+message AuthResponse {
+    string token = 1;
+    Timestamp expires_at = 2;
+    repeated string permissions = 3;
+}
+
+// RefreshTokenRequest for refreshing authentication
+message RefreshTokenRequest {
+    string refresh_token = 1;
+}
+
+// RefreshTokenResponse contains new tokens
+message RefreshTokenResponse {
+    string access_token = 1;
+    string refresh_token = 2;
+    Timestamp expires_at = 3;
+}
+
+// Permission levels
+enum Permission {
+    PERMISSION_UNSPECIFIED = 0;
+    PERMISSION_READ_ORDERS = 1;
+    PERMISSION_WRITE_ORDERS = 2;
+    PERMISSION_READ_POSITIONS = 3;
+    PERMISSION_READ_MARKET_DATA = 4;
+    PERMISSION_ADMIN = 100;
+}
+
+// API key management
+message APIKey {
+    string id = 1;
+    string name = 2;
+    repeated Permission permissions = 3;
+    Timestamp created_at = 4;
+    Timestamp last_used = 5;
+    bool is_active = 6;
+}
+
+// CreateAPIKeyRequest
+message CreateAPIKeyRequest {
+    string name = 1;
+    repeated Permission permissions = 2;
+}
+
+// CreateAPIKeyResponse
+message CreateAPIKeyResponse {
+    APIKey api_key = 1;
+    string secret = 2;  // Only returned once
+}
+
+// ListAPIKeysRequest
+message ListAPIKeysRequest {}
+
+// ListAPIKeysResponse
+message ListAPIKeysResponse {
+    repeated APIKey api_keys = 1;
+}
+
+// RevokeAPIKeyRequest
+message RevokeAPIKeyRequest {
+    string api_key_id = 1;
+}
+
+// RevokeAPIKeyResponse
+message RevokeAPIKeyResponse {
+    bool success = 1;
+}
