@@ -65,6 +65,16 @@ test-benchmark:
 	@echo "Running performance benchmarks..."
 	$(GO) test -bench=. -benchmem ./test/benchmark/...
 
+test-integration:
+	@echo "Running integration tests..."
+	$(GO) test -v ./test/integration/...
+
+benchmark:
+	@echo "Building benchmark tool..."
+	$(GO) build -o $(BIN_DIR)/benchmark ./cmd/benchmark/
+	@echo "Running comprehensive benchmarks..."
+	$(BIN_DIR)/benchmark -type all -duration 10s -output benchmark_report.md
+
 clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
