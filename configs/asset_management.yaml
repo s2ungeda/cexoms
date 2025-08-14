@@ -1,0 +1,199 @@
+# Asset Management Configuration
+
+# Transfer Manager Settings
+transfer_manager:
+  # Daily transfer limits
+  daily_limit_usdt: 1000000
+  single_transfer_limit_usdt: 100000
+  
+  # Rebalancing enabled
+  rebalancing_enabled: true
+  
+  # Background workers
+  transfer_check_interval: 10s
+  rebalance_check_interval: 5m
+
+# Rebalancer Configuration
+rebalancer:
+  enabled: true
+  dry_run: false  # Set to true for testing
+  
+  # Transfer limits per run
+  max_transfers_per_run: 10
+  min_transfer_amount_usdt: 100
+  
+  # Imbalance thresholds
+  max_imbalance_ratio: 0.3  # 30% max deviation
+  safety_margin: 0.1        # Keep 10% buffer
+  
+  # Quiet periods (UTC)
+  # Don't rebalance during active trading hours
+  quiet_periods:
+    - start: "13:00"  # 9 AM EST
+      end: "21:00"    # 5 PM EST
+  
+  # Strategy weights (must sum to 1.0)
+  strategy_weights:
+    proportional: 0.4   # Balance distribution
+    performance: 0.3    # Performance-based allocation
+    ratelimit: 0.3      # Rate limit optimization
+
+# Rebalancing Rules
+rebalance_rules:
+  # Maintain minimum balances
+  minimum_balances:
+    main_account: 10000     # $10k minimum in main
+    sub_accounts: 1000      # $1k minimum in subs
+    strategy_accounts: 5000 # $5k minimum for strategy accounts
+  
+  # Maximum balance limits
+  maximum_balances:
+    sub_accounts: 100000    # $100k max per sub
+    strategy_accounts: 50000 # $50k max per strategy account
+  
+  # Target allocations by strategy
+  strategy_allocations:
+    arbitrage:
+      target_percent: 30
+      min_accounts: 3
+      max_per_account: 30000
+    
+    market_making:
+      target_percent: 40
+      min_accounts: 5
+      max_per_account: 20000
+    
+    trend_following:
+      target_percent: 20
+      min_accounts: 2
+      max_per_account: 50000
+    
+    scalping:
+      target_percent: 10
+      min_accounts: 4
+      max_per_account: 10000
+  
+  # Dust consolidation
+  dust_threshold: 100  # Balances below $100 are considered dust
+  dust_consolidation_min_accounts: 3  # Consolidate when 3+ accounts have dust
+
+# Automated Rebalancing Schedules
+schedules:
+  # Hourly checks
+  maintain_minimums:
+    enabled: true
+    schedule: "hourly"
+    priority: 100
+    description: "Ensure all accounts maintain minimum balances"
+  
+  # Daily rebalancing
+  strategy_rebalance:
+    enabled: true
+    schedule: "daily"
+    time: "00:00"  # Midnight UTC
+    priority: 80
+    description: "Rebalance funds across strategy accounts"
+  
+  # Weekly optimization
+  rate_limit_optimization:
+    enabled: true
+    schedule: "weekly"
+    day: "sunday"
+    time: "00:00"
+    priority: 60
+    description: "Optimize fund distribution for rate limits"
+  
+  # Weekly dust consolidation
+  dust_cleanup:
+    enabled: true
+    schedule: "weekly"
+    day: "sunday"
+    time: "12:00"
+    priority: 40
+    description: "Consolidate small balances to main account"
+
+# Performance-based allocation
+performance_allocation:
+  # Metrics window
+  lookback_period: 7d
+  
+  # Performance thresholds
+  min_win_rate: 0.4      # 40% minimum win rate
+  min_profit_factor: 1.2 # Minimum profit factor
+  
+  # Allocation adjustments
+  increase_allocation:
+    win_rate_threshold: 0.6
+    profit_factor_threshold: 1.5
+    max_increase_percent: 20
+  
+  decrease_allocation:
+    win_rate_threshold: 0.3
+    profit_factor_threshold: 0.8
+    max_decrease_percent: 30
+  
+  # Penalty for consecutive losses
+  consecutive_loss_penalty:
+    3_losses: 0.9   # Reduce allocation by 10%
+    5_losses: 0.7   # Reduce allocation by 30%
+    10_losses: 0.5  # Reduce allocation by 50%
+
+# Rate limit optimization
+rate_limit_optimization:
+  # Weight distribution targets
+  target_utilization: 0.7  # Aim for 70% rate limit usage
+  
+  # Buffer for spikes
+  spike_buffer: 200  # Keep 200 weight buffer per account
+  
+  # Rotation settings
+  rotation_cooldown: 5m
+  max_rotations_per_hour: 6
+
+# Emergency settings
+emergency:
+  # Circuit breakers
+  max_daily_transfers: 100
+  max_hourly_transfers: 20
+  
+  # Balance alerts
+  low_balance_alert: 500      # Alert when account below $500
+  high_balance_alert: 500000  # Alert when account above $500k
+  
+  # Transfer failure handling
+  max_consecutive_failures: 3
+  failure_cooldown: 30m
+
+# Notification settings
+notifications:
+  enabled: true
+  
+  # Channels
+  channels:
+    - type: "log"
+      level: "info"
+    
+    - type: "webhook"
+      url: "${WEBHOOK_URL}"
+      events:
+        - "transfer_completed"
+        - "rebalance_completed"
+        - "emergency_alert"
+  
+  # Event filters
+  min_transfer_amount_notify: 10000  # Only notify for transfers > $10k
+  
+# Audit and compliance
+audit:
+  # Keep transfer history
+  history_retention_days: 90
+  
+  # Detailed logging
+  log_all_transfers: true
+  log_rebalance_analysis: true
+  
+  # Compliance checks
+  require_reason: true  # All transfers must have a reason
+  require_approval:     # Transfers requiring approval
+    amount_threshold: 100000
+    cross_strategy: true

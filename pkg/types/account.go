@@ -45,6 +45,27 @@ type Account struct {
 	LastUsed    time.Time `json:"last_used"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	
+	// Metadata for additional information
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	
+	// Cached balance (internal use)
+	cachedBalance *AccountBalance `json:"-"`
+}
+
+// GetBalance returns the cached balance for this account
+// In production, this would fetch from the account manager
+func (a *Account) GetBalance() (*AccountBalance, error) {
+	if a.cachedBalance != nil {
+		return a.cachedBalance, nil
+	}
+	// Return empty balance if not cached
+	return &AccountBalance{
+		AccountID: a.ID,
+		Exchange:  a.Exchange,
+		TotalUSDT: decimal.Zero,
+		UpdatedAt: time.Now(),
+	}, nil
 }
 
 // AccountBalance represents account balance information
@@ -79,15 +100,21 @@ type AccountMetrics struct {
 
 // AccountTransfer represents a transfer between accounts
 type AccountTransfer struct {
-	ID          string          `json:"id"`
-	FromAccount string          `json:"from_account"`
-	ToAccount   string          `json:"to_account"`
-	Asset       string          `json:"asset"`
-	Amount      decimal.Decimal `json:"amount"`
-	Status      string          `json:"status"`
-	TxID        string          `json:"tx_id,omitempty"`
-	CreatedAt   time.Time       `json:"created_at"`
-	CompletedAt *time.Time      `json:"completed_at,omitempty"`
+	ID                 string          `json:"id"`
+	FromAccount        string          `json:"from_account"`
+	ToAccount          string          `json:"to_account"`
+	Exchange           string          `json:"exchange"`
+	Asset              string          `json:"asset"`
+	Amount             decimal.Decimal `json:"amount"`
+	Status             string          `json:"status"`
+	Reason             string          `json:"reason,omitempty"`
+	ExchangeTransferID string          `json:"exchange_transfer_id,omitempty"`
+	TxID               string          `json:"tx_id,omitempty"`
+	ErrorMessage       string          `json:"error_message,omitempty"`
+	RequestedAt        time.Time       `json:"requested_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+	CompletedAt        time.Time       `json:"completed_at"`
+	CreatedAt          time.Time       `json:"created_at"`
 }
 
 // AccountSelector is an interface for selecting accounts based on criteria
@@ -145,6 +172,9 @@ type AccountManager interface {
 	// GetBalance retrieves account balance
 	GetBalance(accountID string) (*AccountBalance, error)
 	
+	// UpdateBalance updates account balance
+	UpdateBalance(accountID string, balance *AccountBalance) error
+	
 	// GetPositions retrieves account positions
 	GetPositions(accountID string) (*AccountPosition, error)
 	
@@ -159,6 +189,9 @@ type AccountManager interface {
 	
 	// GetMetrics retrieves account performance metrics
 	GetMetrics(accountID string) (*AccountMetrics, error)
+	
+	// UpdateRateLimit updates rate limit usage for an account
+	UpdateRateLimit(accountID string, weight int) error
 	
 	// RotateAccounts rotates accounts for rate limit distribution
 	RotateAccounts(strategy string) error
