@@ -44,6 +44,7 @@ build-services:
 	$(GO) build -o $(BIN_DIR)/grpc-client ./cmd/grpc-client/
 	$(GO) build -o $(BIN_DIR)/test-grpc ./cmd/test-grpc/
 	$(GO) build -o $(BIN_DIR)/monitor ./cmd/monitor/
+	$(GO) build -o $(BIN_DIR)/backtest ./cmd/backtest/
 
 proto:
 	@echo "Generating protobuf files..."
