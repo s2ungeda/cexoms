@@ -1,0 +1,150 @@
+# {{.ExchangeName}} Configuration Template
+
+exchange:
+  name: {{.ExchangeLower}}
+  type: {{.MarketTypeLower}}
+  enabled: true
+
+api:
+  # REST API endpoints
+  rest:
+    base_url: {{.RestURL}}
+    timeout: 30s
+    retry_attempts: 3
+    retry_delay: 1s
+  
+  # WebSocket endpoints
+  websocket:
+    public_url: {{.WsPublicURL}}
+    private_url: {{.WsPrivateURL}}
+    ping_interval: 30s
+    reconnect_delay: 5s
+    max_reconnects: 10
+
+# Authentication
+auth:
+  api_key: ${VAULT:secret/exchanges/{{.ExchangeLower}}_{{.MarketTypeLower}}/api_key}
+  api_secret: ${VAULT:secret/exchanges/{{.ExchangeLower}}_{{.MarketTypeLower}}/api_secret}
+{{if .HasApiPassphrase}}  api_passphrase: ${VAULT:secret/exchanges/{{.ExchangeLower}}_{{.MarketTypeLower}}/api_passphrase}{{end}}
+
+# Rate limiting
+rate_limits:
+  # Requests per second
+  rest_api: {{.RateLimit}}
+  websocket_subscribe: 10
+  
+  # Order limits
+  create_order: 20
+  cancel_order: 20
+  query_order: 50
+
+# Trading configuration
+trading:
+  # Symbol mapping
+  symbols:
+    - internal: BTC/USDT
+      exchange: {{.BTCSymbol}}
+    - internal: ETH/USDT
+      exchange: {{.ETHSymbol}}
+    - internal: BNB/USDT
+      exchange: {{.BNBSymbol}}
+  
+  # Order size limits
+  min_order_sizes:
+    BTC/USDT: 0.0001
+    ETH/USDT: 0.001
+    BNB/USDT: 0.01
+  
+  # Price precision (decimal places)
+  price_precision:
+    BTC/USDT: 2
+    ETH/USDT: 2
+    BNB/USDT: 3
+  
+  # Quantity precision (decimal places)
+  quantity_precision:
+    BTC/USDT: 4
+    ETH/USDT: 3
+    BNB/USDT: 2
+
+{{if .HasFutures}}
+# Futures-specific configuration
+futures:
+  # Default leverage
+  default_leverage: 10
+  max_leverage: 125
+  
+  # Position mode
+  position_mode: hedge  # hedge or oneway
+  
+  # Margin type
+  margin_type: isolated  # isolated or cross
+  
+  # Contract types
+  contract_types:
+    - perpetual
+    - quarterly
+{{end}}
+
+# Market data configuration
+market_data:
+  # Orderbook settings
+  orderbook:
+    depth: 20
+    update_interval: 100ms
+    snapshot_interval: 30s
+  
+  # Trade stream settings
+  trades:
+    buffer_size: 1000
+    persist: true
+  
+  # Ticker settings
+  ticker:
+    update_interval: 1s
+
+# Risk management
+risk:
+  # Maximum position sizes (in USDT)
+  max_position_size:
+    BTC/USDT: 100000
+    ETH/USDT: 50000
+    default: 10000
+  
+  # Maximum order sizes
+  max_order_size:
+    BTC/USDT: 1.0
+    ETH/USDT: 10.0
+    default: 1000
+  
+  # Price deviation limits (%)
+  max_price_deviation: 5.0
+  
+  # Daily loss limit
+  daily_loss_limit: 10000
+
+# Monitoring
+monitoring:
+  # Metrics collection
+  metrics:
+    enabled: true
+    interval: 10s
+  
+  # Health checks
+  health:
+    check_interval: 30s
+    timeout: 5s
+  
+  # Alerts
+  alerts:
+    connection_loss: true
+    rate_limit_exceeded: true
+    order_rejected: true
+
+# Logging
+logging:
+  level: info
+  format: json
+  outputs:
+    - stdout
+    - file: /var/log/oms/{{.ExchangeLower}}_{{.MarketTypeLower}}.log

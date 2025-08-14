@@ -1,0 +1,337 @@
+package {{.Package}}
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/mExOms/oms/pkg/types"
+	"github.com/shopspring/decimal"
+)
+
+// {{.Exchange}}Connector implements the Exchange interface for {{.ExchangeName}}
+type {{.Exchange}}Connector struct {
+	mu sync.RWMutex
+	
+	// API credentials
+	apiKey    string
+	apiSecret string
+	
+	// Connection state
+	connected bool
+	lastPing  time.Time
+	
+	// Market data cache
+	orderbooks map[string]*types.OrderBook
+	tickers    map[string]*types.Ticker
+	
+	// Order tracking
+	activeOrders map[string]*types.Order
+	
+	// Rate limiting
+	rateLimiter *types.RateLimiter
+}
+
+// New{{.Exchange}}Connector creates a new {{.ExchangeName}} connector
+func New{{.Exchange}}Connector(apiKey, apiSecret string) *{{.Exchange}}Connector {
+	return &{{.Exchange}}Connector{
+		apiKey:       apiKey,
+		apiSecret:    apiSecret,
+		orderbooks:   make(map[string]*types.OrderBook),
+		tickers:      make(map[string]*types.Ticker),
+		activeOrders: make(map[string]*types.Order),
+		rateLimiter:  types.NewRateLimiter({{.RateLimit}}, time.Second),
+	}
+}
+
+// Connect establishes connection to {{.ExchangeName}}
+func (c *{{.Exchange}}Connector) Connect(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	// TODO: Implement {{.ExchangeName}} connection logic
+	// 1. Initialize REST API client
+	// 2. Authenticate with API credentials
+	// 3. Start WebSocket connections
+	
+	c.connected = true
+	c.lastPing = time.Now()
+	
+	return nil
+}
+
+// Disconnect closes the connection to {{.ExchangeName}}
+func (c *{{.Exchange}}Connector) Disconnect() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	// TODO: Implement disconnect logic
+	// 1. Close WebSocket connections
+	// 2. Cancel any pending operations
+	
+	c.connected = false
+	return nil
+}
+
+// IsConnected checks if the connector is connected
+func (c *{{.Exchange}}Connector) IsConnected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.connected
+}
+
+// GetName returns the exchange name
+func (c *{{.Exchange}}Connector) GetName() string {
+	return "{{.ExchangeLower}}"
+}
+
+// GetMarket returns the market type (spot/futures)
+func (c *{{.Exchange}}Connector) GetMarket() types.MarketType {
+	return types.MarketType{{.MarketType}}
+}
+
+// CreateOrder creates a new order on {{.ExchangeName}}
+func (c *{{.Exchange}}Connector) CreateOrder(ctx context.Context, order *types.Order) (*types.Order, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	
+	// Validate order
+	if err := c.validateOrder(order); err != nil {
+		return nil, fmt.Errorf("order validation failed: %w", err)
+	}
+	
+	// TODO: Implement {{.ExchangeName}} order creation
+	// 1. Convert order to {{.ExchangeName}} format
+	// 2. Send order to exchange API
+	// 3. Parse response and update order status
+	
+	// For now, return a mock response
+	order.ExchangeOrderID = fmt.Sprintf("{{.ExchangeUpper}}_%d", time.Now().UnixNano())
+	order.Status = types.OrderStatusNew
+	order.CreatedAt = time.Now()
+	
+	// Track order
+	c.mu.Lock()
+	c.activeOrders[order.ClientOrderID] = order
+	c.mu.Unlock()
+	
+	return order, nil
+}
+
+// CancelOrder cancels an existing order
+func (c *{{.Exchange}}Connector) CancelOrder(ctx context.Context, orderID string) error {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return err
+	}
+	
+	// TODO: Implement {{.ExchangeName}} order cancellation
+	// 1. Find order (check both client and exchange IDs)
+	// 2. Send cancel request to exchange
+	// 3. Update order status
+	
+	c.mu.Lock()
+	if order, exists := c.activeOrders[orderID]; exists {
+		order.Status = types.OrderStatusCanceled
+		delete(c.activeOrders, orderID)
+	}
+	c.mu.Unlock()
+	
+	return nil
+}
+
+// GetOrder retrieves order details
+func (c *{{.Exchange}}Connector) GetOrder(ctx context.Context, orderID string) (*types.Order, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	
+	c.mu.RLock()
+	order, exists := c.activeOrders[orderID]
+	c.mu.RUnlock()
+	
+	if !exists {
+		// TODO: Query from exchange API
+		return nil, fmt.Errorf("order not found: %s", orderID)
+	}
+	
+	return order, nil
+}
+
+// GetOpenOrders returns all open orders
+func (c *{{.Exchange}}Connector) GetOpenOrders(ctx context.Context, symbol string) ([]*types.Order, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	
+	var orders []*types.Order
+	for _, order := range c.activeOrders {
+		if symbol == "" || order.Symbol == symbol {
+			if order.Status == types.OrderStatusNew || order.Status == types.OrderStatusPartiallyFilled {
+				orders = append(orders, order)
+			}
+		}
+	}
+	
+	return orders, nil
+}
+
+// GetBalance retrieves account balance
+func (c *{{.Exchange}}Connector) GetBalance(ctx context.Context, asset string) (*types.Balance, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	
+	// TODO: Implement {{.ExchangeName}} balance query
+	// 1. Query account endpoint
+	// 2. Parse balance for specific asset or all assets
+	
+	// Mock response
+	return &types.Balance{
+		Asset:     asset,
+		Free:      decimal.NewFromFloat(10000),
+		Locked:    decimal.NewFromFloat(1000),
+		Total:     decimal.NewFromFloat(11000),
+		UpdatedAt: time.Now(),
+	}, nil
+}
+
+// GetOrderBook retrieves order book for a symbol
+func (c *{{.Exchange}}Connector) GetOrderBook(ctx context.Context, symbol string) (*types.OrderBook, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	
+	c.mu.RLock()
+	orderbook, exists := c.orderbooks[symbol]
+	c.mu.RUnlock()
+	
+	if !exists || time.Since(orderbook.UpdatedAt) > 5*time.Second {
+		// TODO: Fetch fresh orderbook from API
+		return nil, fmt.Errorf("orderbook not available for %s", symbol)
+	}
+	
+	return orderbook, nil
+}
+
+// GetTicker retrieves ticker data for a symbol
+func (c *{{.Exchange}}Connector) GetTicker(ctx context.Context, symbol string) (*types.Ticker, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	
+	c.mu.RLock()
+	ticker, exists := c.tickers[symbol]
+	c.mu.RUnlock()
+	
+	if !exists || time.Since(ticker.UpdatedAt) > 1*time.Second {
+		// TODO: Fetch fresh ticker from API
+		return nil, fmt.Errorf("ticker not available for %s", symbol)
+	}
+	
+	return ticker, nil
+}
+
+// SubscribeOrderBook subscribes to order book updates
+func (c *{{.Exchange}}Connector) SubscribeOrderBook(symbol string, callback types.OrderBookCallback) error {
+	// TODO: Implement WebSocket subscription for orderbook
+	// 1. Connect to WebSocket stream
+	// 2. Subscribe to orderbook channel
+	// 3. Parse updates and call callback
+	
+	return nil
+}
+
+// SubscribeTrades subscribes to trade updates
+func (c *{{.Exchange}}Connector) SubscribeTrades(symbol string, callback types.TradeCallback) error {
+	// TODO: Implement WebSocket subscription for trades
+	// 1. Connect to WebSocket stream
+	// 2. Subscribe to trades channel
+	// 3. Parse trades and call callback
+	
+	return nil
+}
+
+// SubscribeOrders subscribes to order updates
+func (c *{{.Exchange}}Connector) SubscribeOrders(callback types.OrderUpdateCallback) error {
+	// TODO: Implement WebSocket subscription for orders
+	// 1. Connect to private WebSocket stream
+	// 2. Subscribe to order updates
+	// 3. Parse updates and call callback
+	
+	return nil
+}
+
+// NormalizeSymbol converts symbol to exchange format
+func (c *{{.Exchange}}Connector) NormalizeSymbol(symbol string) string {
+	// TODO: Implement {{.ExchangeName}} symbol normalization
+	// Example: BTC/USDT -> {{.SymbolFormat}}
+	
+	// Default implementation
+	return strings.ReplaceAll(strings.ToUpper(symbol), "/", "")
+}
+
+// DenormalizeSymbol converts from exchange format to standard format
+func (c *{{.Exchange}}Connector) DenormalizeSymbol(symbol string) string {
+	// TODO: Implement {{.ExchangeName}} symbol denormalization
+	// Example: {{.SymbolFormat}} -> BTC/USDT
+	
+	// Default implementation (assumes USDT pairs)
+	if strings.HasSuffix(symbol, "USDT") {
+		base := strings.TrimSuffix(symbol, "USDT")
+		return base + "/USDT"
+	}
+	return symbol
+}
+
+// validateOrder validates order parameters
+func (c *{{.Exchange}}Connector) validateOrder(order *types.Order) error {
+	if order.Symbol == "" {
+		return fmt.Errorf("symbol is required")
+	}
+	
+	if order.Quantity.IsZero() || order.Quantity.IsNegative() {
+		return fmt.Errorf("invalid quantity: %s", order.Quantity)
+	}
+	
+	if order.Type == types.OrderTypeLimit && order.Price.IsZero() {
+		return fmt.Errorf("price is required for limit orders")
+	}
+	
+	// TODO: Add exchange-specific validation
+	// - Minimum order size
+	// - Price precision
+	// - Symbol validation
+	
+	return nil
+}
+
+// Additional methods for {{.ExchangeName}}-specific features
+{{if .HasFutures}}
+// SetLeverage sets leverage for futures trading
+func (c *{{.Exchange}}Connector) SetLeverage(ctx context.Context, symbol string, leverage int) error {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return err
+	}
+	
+	// TODO: Implement leverage setting for {{.ExchangeName}} futures
+	
+	return nil
+}
+
+// GetPosition retrieves position information
+func (c *{{.Exchange}}Connector) GetPosition(ctx context.Context, symbol string) (*types.Position, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	
+	// TODO: Implement position query for {{.ExchangeName}} futures
+	
+	return nil, nil
+}
+{{end}}

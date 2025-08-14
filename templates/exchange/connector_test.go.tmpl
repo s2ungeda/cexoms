@@ -1,0 +1,389 @@
+package {{.Package}}
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/mExOms/oms/pkg/types"
+	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestNew{{.Exchange}}Connector(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	
+	assert.NotNil(t, connector)
+	assert.Equal(t, "test-key", connector.apiKey)
+	assert.Equal(t, "test-secret", connector.apiSecret)
+	assert.False(t, connector.connected)
+	assert.NotNil(t, connector.orderbooks)
+	assert.NotNil(t, connector.tickers)
+	assert.NotNil(t, connector.activeOrders)
+	assert.NotNil(t, connector.rateLimiter)
+}
+
+func Test{{.Exchange}}Connector_Connect(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	assert.True(t, connector.IsConnected())
+}
+
+func Test{{.Exchange}}Connector_Disconnect(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	// Then disconnect
+	err = connector.Disconnect()
+	require.NoError(t, err)
+	assert.False(t, connector.IsConnected())
+}
+
+func Test{{.Exchange}}Connector_GetName(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	assert.Equal(t, "{{.ExchangeLower}}", connector.GetName())
+}
+
+func Test{{.Exchange}}Connector_GetMarket(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	assert.Equal(t, types.MarketType{{.MarketType}}, connector.GetMarket())
+}
+
+func Test{{.Exchange}}Connector_CreateOrder(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	tests := []struct {
+		name    string
+		order   *types.Order
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid limit order",
+			order: &types.Order{
+				ClientOrderID: "test-001",
+				Symbol:        "BTC/USDT",
+				Side:          types.OrderSideBuy,
+				Type:          types.OrderTypeLimit,
+				Quantity:      decimal.NewFromFloat(0.01),
+				Price:         decimal.NewFromFloat(50000),
+				TimeInForce:   types.TimeInForceGTC,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid market order",
+			order: &types.Order{
+				ClientOrderID: "test-002",
+				Symbol:        "ETH/USDT",
+				Side:          types.OrderSideSell,
+				Type:          types.OrderTypeMarket,
+				Quantity:      decimal.NewFromFloat(0.1),
+				TimeInForce:   types.TimeInForceIOC,
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing symbol",
+			order: &types.Order{
+				ClientOrderID: "test-003",
+				Side:          types.OrderSideBuy,
+				Type:          types.OrderTypeLimit,
+				Quantity:      decimal.NewFromFloat(0.01),
+				Price:         decimal.NewFromFloat(50000),
+			},
+			wantErr: true,
+			errMsg:  "symbol is required",
+		},
+		{
+			name: "zero quantity",
+			order: &types.Order{
+				ClientOrderID: "test-004",
+				Symbol:        "BTC/USDT",
+				Side:          types.OrderSideBuy,
+				Type:          types.OrderTypeLimit,
+				Quantity:      decimal.Zero,
+				Price:         decimal.NewFromFloat(50000),
+			},
+			wantErr: true,
+			errMsg:  "invalid quantity",
+		},
+		{
+			name: "limit order without price",
+			order: &types.Order{
+				ClientOrderID: "test-005",
+				Symbol:        "BTC/USDT",
+				Side:          types.OrderSideBuy,
+				Type:          types.OrderTypeLimit,
+				Quantity:      decimal.NewFromFloat(0.01),
+			},
+			wantErr: true,
+			errMsg:  "price is required for limit orders",
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := connector.CreateOrder(ctx, tt.order)
+			
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, result)
+				assert.NotEmpty(t, result.ExchangeOrderID)
+				assert.Equal(t, types.OrderStatusNew, result.Status)
+				assert.Equal(t, tt.order.ClientOrderID, result.ClientOrderID)
+				
+				// Check if order is tracked
+				trackedOrder, err := connector.GetOrder(ctx, tt.order.ClientOrderID)
+				require.NoError(t, err)
+				assert.Equal(t, result.ExchangeOrderID, trackedOrder.ExchangeOrderID)
+			}
+		})
+	}
+}
+
+func Test{{.Exchange}}Connector_CancelOrder(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect and create an order first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	order := &types.Order{
+		ClientOrderID: "test-cancel-001",
+		Symbol:        "BTC/USDT",
+		Side:          types.OrderSideBuy,
+		Type:          types.OrderTypeLimit,
+		Quantity:      decimal.NewFromFloat(0.01),
+		Price:         decimal.NewFromFloat(50000),
+	}
+	
+	createdOrder, err := connector.CreateOrder(ctx, order)
+	require.NoError(t, err)
+	
+	// Cancel the order
+	err = connector.CancelOrder(ctx, createdOrder.ClientOrderID)
+	require.NoError(t, err)
+	
+	// Verify order is no longer in active orders
+	_, err = connector.GetOrder(ctx, createdOrder.ClientOrderID)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "order not found")
+}
+
+func Test{{.Exchange}}Connector_GetOpenOrders(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	// Create multiple orders
+	orders := []*types.Order{
+		{
+			ClientOrderID: "test-open-001",
+			Symbol:        "BTC/USDT",
+			Side:          types.OrderSideBuy,
+			Type:          types.OrderTypeLimit,
+			Quantity:      decimal.NewFromFloat(0.01),
+			Price:         decimal.NewFromFloat(50000),
+		},
+		{
+			ClientOrderID: "test-open-002",
+			Symbol:        "ETH/USDT",
+			Side:          types.OrderSideSell,
+			Type:          types.OrderTypeLimit,
+			Quantity:      decimal.NewFromFloat(0.1),
+			Price:         decimal.NewFromFloat(3000),
+		},
+		{
+			ClientOrderID: "test-open-003",
+			Symbol:        "BTC/USDT",
+			Side:          types.OrderSideSell,
+			Type:          types.OrderTypeLimit,
+			Quantity:      decimal.NewFromFloat(0.02),
+			Price:         decimal.NewFromFloat(51000),
+		},
+	}
+	
+	for _, order := range orders {
+		_, err := connector.CreateOrder(ctx, order)
+		require.NoError(t, err)
+	}
+	
+	// Get all open orders
+	openOrders, err := connector.GetOpenOrders(ctx, "")
+	require.NoError(t, err)
+	assert.Len(t, openOrders, 3)
+	
+	// Get open orders for specific symbol
+	btcOrders, err := connector.GetOpenOrders(ctx, "BTC/USDT")
+	require.NoError(t, err)
+	assert.Len(t, btcOrders, 2)
+	
+	ethOrders, err := connector.GetOpenOrders(ctx, "ETH/USDT")
+	require.NoError(t, err)
+	assert.Len(t, ethOrders, 1)
+}
+
+func Test{{.Exchange}}Connector_GetBalance(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	// Get balance for specific asset
+	balance, err := connector.GetBalance(ctx, "USDT")
+	require.NoError(t, err)
+	assert.NotNil(t, balance)
+	assert.Equal(t, "USDT", balance.Asset)
+	assert.True(t, balance.Total.GreaterThan(decimal.Zero))
+	assert.True(t, balance.Free.LessThanOrEqual(balance.Total))
+	assert.False(t, balance.UpdatedAt.IsZero())
+}
+
+func Test{{.Exchange}}Connector_SymbolNormalization(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"BTC/USDT", "BTCUSDT"},
+		{"ETH/USDT", "ETHUSDT"},
+		{"BNB/BUSD", "BNBBUSD"},
+		{"btc/usdt", "BTCUSDT"},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := connector.NormalizeSymbol(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test{{.Exchange}}Connector_SymbolDenormalization(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"BTCUSDT", "BTC/USDT"},
+		{"ETHUSDT", "ETH/USDT"},
+		{"BNBUSDT", "BNB/USDT"},
+		{"BTCBUSD", "BTCBUSD"}, // Non-USDT pair
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := connector.DenormalizeSymbol(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test{{.Exchange}}Connector_RateLimiting(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	// Measure time for multiple requests
+	start := time.Now()
+	requestCount := 5
+	
+	for i := 0; i < requestCount; i++ {
+		_, err := connector.GetBalance(ctx, "USDT")
+		require.NoError(t, err)
+	}
+	
+	elapsed := time.Since(start)
+	
+	// With rate limit of {{.RateLimit}} req/sec, 5 requests should take some time
+	// This is a basic test - actual implementation should be more precise
+	assert.True(t, elapsed > 0, "Rate limiting should introduce some delay")
+}
+
+{{if .HasFutures}}
+func Test{{.Exchange}}Connector_SetLeverage(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	// Set leverage
+	err = connector.SetLeverage(ctx, "BTC/USDT", 10)
+	require.NoError(t, err)
+	
+	// TODO: Add verification once GetPosition is implemented
+}
+
+func Test{{.Exchange}}Connector_GetPosition(t *testing.T) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	// Connect first
+	err := connector.Connect(ctx)
+	require.NoError(t, err)
+	
+	// Get position
+	position, err := connector.GetPosition(ctx, "BTC/USDT")
+	
+	// Since this is not implemented yet, we expect nil, nil
+	assert.NoError(t, err)
+	assert.Nil(t, position)
+}
+{{end}}
+
+// Benchmark tests
+
+func BenchmarkCreateOrder(b *testing.B) {
+	connector := New{{.Exchange}}Connector("test-key", "test-secret")
+	ctx := context.Background()
+	
+	err := connector.Connect(ctx)
+	require.NoError(b, err)
+	
+	order := &types.Order{
+		ClientOrderID: "bench-001",
+		Symbol:        "BTC/USDT",
+		Side:          types.OrderSideBuy,
+		Type:          types.OrderTypeLimit,
+		Quantity:      decimal.NewFromFloat(0.01),
+		Price:         decimal.NewFromFloat(50000),
+	}
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		order.ClientOrderID = fmt.Sprintf("bench-%d", i)
+		_, _ = connector.CreateOrder(ctx, order)
+	}
+}

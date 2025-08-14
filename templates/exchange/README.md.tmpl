@@ -1,0 +1,123 @@
+# {{.ExchangeName}} Connector
+
+This connector implements the Exchange interface for {{.ExchangeName}} {{.MarketType}} trading.
+
+## Features
+
+- [x] REST API integration
+- [x] WebSocket real-time data
+- [x] Order management (create, cancel, query)
+- [x] Balance queries
+- [x] Market data (orderbook, ticker, trades)
+- [x] Rate limiting
+- [x] Symbol normalization
+{{if .HasFutures}}- [x] Futures trading support
+- [x] Leverage management
+- [x] Position tracking{{end}}
+
+## Configuration
+
+1. Copy the configuration template:
+```bash
+cp templates/exchange/config.yaml.tmpl configs/{{.ExchangeLower}}_{{.MarketTypeLower}}.yaml
+```
+
+2. Set up API credentials in Vault:
+```bash
+vault kv put secret/exchanges/{{.ExchangeLower}}_{{.MarketTypeLower}} \
+  api_key="your-api-key" \
+  api_secret="your-api-secret"{{if .HasApiPassphrase}} \
+  api_passphrase="your-passphrase"{{end}}
+```
+
+3. Update the configuration file with exchange-specific settings.
+
+## Usage
+
+```go
+// Create connector
+connector := {{.Package}}.New{{.Exchange}}Connector(apiKey, apiSecret)
+
+// Connect to exchange
+err := connector.Connect(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Create an order
+order := &types.Order{
+    Symbol:      "BTC/USDT",
+    Side:        types.OrderSideBuy,
+    Type:        types.OrderTypeLimit,
+    Quantity:    decimal.NewFromFloat(0.01),
+    Price:       decimal.NewFromFloat(50000),
+    TimeInForce: types.TimeInForceGTC,
+}
+
+createdOrder, err := connector.CreateOrder(ctx, order)
+```
+
+## Implementation Checklist
+
+### Required Methods
+- [ ] Connect() - Establish connection to exchange
+- [ ] Disconnect() - Close connections gracefully
+- [ ] CreateOrder() - Place new orders
+- [ ] CancelOrder() - Cancel existing orders
+- [ ] GetOrder() - Query order status
+- [ ] GetOpenOrders() - List open orders
+- [ ] GetBalance() - Query account balance
+- [ ] GetOrderBook() - Fetch order book
+- [ ] GetTicker() - Fetch ticker data
+- [ ] SubscribeOrderBook() - Real-time order book updates
+- [ ] SubscribeTrades() - Real-time trade updates
+- [ ] SubscribeOrders() - Real-time order updates
+- [ ] NormalizeSymbol() - Convert to exchange format
+- [ ] DenormalizeSymbol() - Convert from exchange format
+
+{{if .HasFutures}}
+### Futures-Specific Methods
+- [ ] SetLeverage() - Set position leverage
+- [ ] GetPosition() - Query position details
+- [ ] GetPositions() - List all positions
+- [ ] SetMarginType() - Set isolated/cross margin
+{{end}}
+
+### Exchange-Specific Features
+Add any exchange-specific methods or features here:
+- [ ] TODO: List specific features
+
+## Testing
+
+Run unit tests:
+```bash
+go test -v ./services/{{.ExchangeLower}}/
+```
+
+Run integration tests (requires API credentials):
+```bash
+go test -v -tags=integration ./services/{{.ExchangeLower}}/
+```
+
+## API Limits
+
+{{.ExchangeName}} rate limits:
+- REST API: {{.RateLimit}} requests/second
+- Order placement: 20 orders/second
+- Order cancellation: 20 orders/second
+
+## Symbol Format
+
+{{.ExchangeName}} uses the following symbol format:
+- Spot: {{.BTCSymbol}} (BTC/USDT)
+- {{if .HasFutures}}Futures: {{.BTCFuturesSymbol}} (BTC perpetual){{end}}
+
+## Known Issues
+
+- TODO: Document any known issues or limitations
+
+## References
+
+- [{{.ExchangeName}} API Documentation]({{.DocsURL}})
+- [Rate Limits]({{.RateLimitsURL}})
+- [WebSocket Streams]({{.WebSocketDocsURL}})

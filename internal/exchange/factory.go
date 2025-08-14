@@ -4,6 +4,11 @@ import (
 	"fmt"
 	
 	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/oms/services/binance"
+	// TODO: Import new exchange packages here
+	// "github.com/mExOms/oms/services/bybit"
+	// "github.com/mExOms/oms/services/okx"
+	// "github.com/mExOms/oms/services/upbit"
 	"github.com/spf13/viper"
 )
 
@@ -59,34 +64,54 @@ func (f *Factory) CreateExchange(exchangeType types.ExchangeType) (types.Exchang
 		}
 	}
 	
+	config := f.configs[exchangeType]
+	
 	switch exchangeType {
 	case types.ExchangeBinanceSpot:
-		// TODO: Return BinanceSpot instance
-		return nil, fmt.Errorf("binance spot connector not yet implemented")
+		return binance.NewBinanceSpotConnector(
+			config.APIKey,
+			config.SecretKey,
+			config.TestNet,
+		), nil
 		
 	case types.ExchangeBinanceFutures:
-		// TODO: Return BinanceFutures instance
-		return nil, fmt.Errorf("binance futures connector not yet implemented")
+		return binance.NewBinanceFuturesConnector(
+			config.APIKey,
+			config.SecretKey,
+			config.TestNet,
+		), nil
 		
-	case types.ExchangeBybitSpot:
-		// TODO: Return BybitSpot instance
-		return nil, fmt.Errorf("bybit spot connector not yet implemented")
+	// TODO: Add new exchanges here following this pattern:
+	// case types.ExchangeBybitSpot:
+	//     return bybit.NewBybitConnector(
+	//         config.APIKey,
+	//         config.SecretKey,
+	//     ), nil
 		
-	case types.ExchangeBybitFutures:
-		// TODO: Return BybitFutures instance
-		return nil, fmt.Errorf("bybit futures connector not yet implemented")
+	// case types.ExchangeBybitFutures:
+	//     return bybit.NewBybitFuturesConnector(
+	//         config.APIKey,
+	//         config.SecretKey,
+	//     ), nil
 		
-	case types.ExchangeOKXSpot:
-		// TODO: Return OKXSpot instance
-		return nil, fmt.Errorf("okx spot connector not yet implemented")
+	// case types.ExchangeOKXSpot, types.ExchangeOKXFutures:
+	//     // OKX uses same connector for spot and futures
+	//     return okx.NewOKXConnector(
+	//         config.APIKey,
+	//         config.SecretKey,
+	//         config.APIPassphrase, // OKX requires passphrase
+	//     ), nil
 		
-	case types.ExchangeOKXFutures:
-		// TODO: Return OKXFutures instance
-		return nil, fmt.Errorf("okx futures connector not yet implemented")
+	// case types.ExchangeUpbit:
+	//     return upbit.NewUpbitConnector(
+	//         config.APIKey,
+	//         config.SecretKey,
+	//     ), nil
 		
-	case types.ExchangeUpbit:
-		// TODO: Return Upbit instance
-		return nil, fmt.Errorf("upbit connector not yet implemented")
+	case types.ExchangeBybitSpot, types.ExchangeBybitFutures,
+		types.ExchangeOKXSpot, types.ExchangeOKXFutures,
+		types.ExchangeUpbit:
+		return nil, fmt.Errorf("%s connector not yet implemented - use generate-exchange tool", exchangeType)
 		
 	default:
 		return nil, fmt.Errorf("unsupported exchange type: %s", exchangeType)
