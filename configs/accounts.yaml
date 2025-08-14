@@ -1,0 +1,193 @@
+# Multi-Account Configuration
+
+accounts:
+  binance:
+    # Main account - holds majority of funds
+    main:
+      type: main
+      name: "Binance Main"
+      api_key_vault_path: "secret/exchanges/binance_main"
+      spot_enabled: true
+      futures_enabled: true
+      margin_enabled: false
+      max_balance_usdt: 1000000
+      max_position_usdt: 500000
+      max_leverage: 20
+      daily_loss_limit: 50000
+      rate_limit_weight: 1200
+      rate_limit_orders: 10
+      
+    # Sub account for spot arbitrage strategy
+    sub_spot_arb:
+      type: sub
+      parent_id: main
+      name: "Spot Arbitrage"
+      strategy: "arbitrage"
+      api_key_vault_path: "secret/exchanges/binance_sub_spot_arb"
+      spot_enabled: true
+      futures_enabled: false
+      margin_enabled: false
+      max_balance_usdt: 100000
+      max_position_usdt: 50000
+      max_leverage: 1
+      daily_loss_limit: 5000
+      rate_limit_weight: 1200
+      rate_limit_orders: 10
+      
+    # Sub account for futures trend following
+    sub_futures_trend:
+      type: sub
+      parent_id: main
+      name: "Futures Trend"
+      strategy: "trend_following"
+      api_key_vault_path: "secret/exchanges/binance_sub_futures_trend"
+      spot_enabled: false
+      futures_enabled: true
+      margin_enabled: false
+      max_balance_usdt: 200000
+      max_position_usdt: 100000
+      max_leverage: 10
+      daily_loss_limit: 10000
+      rate_limit_weight: 1200
+      rate_limit_orders: 10
+      
+    # Sub account for market making
+    sub_market_making:
+      type: sub
+      parent_id: main
+      name: "Market Making"
+      strategy: "market_making"
+      api_key_vault_path: "secret/exchanges/binance_sub_mm"
+      spot_enabled: true
+      futures_enabled: false
+      margin_enabled: false
+      max_balance_usdt: 50000
+      max_position_usdt: 30000
+      max_leverage: 1
+      daily_loss_limit: 2000
+      rate_limit_weight: 1200
+      rate_limit_orders: 10
+      
+    # Sub account for grid trading
+    sub_grid_trading:
+      type: sub
+      parent_id: main
+      name: "Grid Trading"
+      strategy: "grid_trading"
+      api_key_vault_path: "secret/exchanges/binance_sub_grid"
+      spot_enabled: true
+      futures_enabled: false
+      margin_enabled: false
+      max_balance_usdt: 30000
+      max_position_usdt: 20000
+      max_leverage: 1
+      daily_loss_limit: 1500
+      rate_limit_weight: 1200
+      rate_limit_orders: 10
+
+# Account routing configuration
+account_routing:
+  # Default account for unspecified strategies
+  default: main
+  
+  # Strategy to account mapping
+  strategies:
+    arbitrage: sub_spot_arb
+    trend_following: sub_futures_trend
+    market_making: sub_market_making
+    grid_trading: sub_grid_trading
+    manual: main
+    
+  # Order routing rules
+  order_rules:
+    # Route large orders to main account
+    - condition: "order_value > 50000"
+      account: main
+      
+    # Route futures orders to appropriate accounts
+    - condition: "market_type == 'futures'"
+      accounts:
+        - sub_futures_trend
+        - main
+        
+    # Route based on symbol patterns
+    - condition: "symbol matches 'BTC.*'"
+      priority:
+        - main
+        - sub_spot_arb
+        
+  # Balance management rules
+  balance_rules:
+    # Minimum balance to maintain in main account
+    min_main_balance: 100000
+    
+    # Maximum balance allowed in sub accounts
+    max_sub_balance: 200000
+    
+    # Rebalance when difference exceeds threshold
+    rebalance_threshold: 10000
+    
+  # Automatic rebalancing
+  rebalance:
+    enabled: true
+    schedule: "0 0 * * *"  # Daily at midnight UTC
+    dry_run: false
+    
+    # Target allocations by strategy (percentage of total)
+    target_allocations:
+      main: 0.40           # 40% in main
+      arbitrage: 0.20      # 20% for arbitrage
+      trend_following: 0.25 # 25% for trend
+      market_making: 0.10  # 10% for MM
+      grid_trading: 0.05   # 5% for grid
+
+# Rate limit optimization
+rate_limit_distribution:
+  # Distribute API calls across accounts
+  enabled: true
+  
+  # Weight threshold to trigger rotation
+  rotation_threshold: 800  # 66% of limit
+  
+  # Cooldown period after rotation
+  cooldown_minutes: 5
+  
+  # Priority order for account selection
+  selection_priority:
+    - least_used      # Account with lowest usage
+    - round_robin     # Rotate through accounts
+    - strategy_match  # Prefer strategy-specific account
+
+# Account monitoring
+monitoring:
+  # Track account metrics
+  metrics:
+    - balance_changes
+    - position_sizes
+    - pnl_tracking
+    - rate_limit_usage
+    
+  # Alerts
+  alerts:
+    # Alert when account balance is low
+    low_balance:
+      enabled: true
+      threshold: 10000
+      
+    # Alert when approaching rate limit
+    rate_limit_warning:
+      enabled: true
+      threshold: 900  # 75% of limit
+      
+    # Alert on daily loss limit
+    loss_limit_warning:
+      enabled: true
+      threshold: 0.8  # 80% of daily limit
+      
+    # Alert on unusual activity
+    anomaly_detection:
+      enabled: true
+      checks:
+        - rapid_balance_change
+        - excessive_orders
+        - position_concentration
