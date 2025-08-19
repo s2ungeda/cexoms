@@ -207,10 +207,10 @@ class OMSClientGUI:
         self.prices_tree.heading('change', text='24h Change')
         
         self.prices_tree.column('#0', width=100)
-        self.prices_tree.column('bid', width=100)
-        self.prices_tree.column('ask', width=100)
-        self.prices_tree.column('last', width=100)
-        self.prices_tree.column('change', width=100)
+        self.prices_tree.column('bid', width=100, anchor='e')
+        self.prices_tree.column('ask', width=100, anchor='e')
+        self.prices_tree.column('last', width=100, anchor='e')
+        self.prices_tree.column('change', width=100, anchor='e')
         
         self.prices_tree.pack(fill='both', expand=True)
 
@@ -299,13 +299,13 @@ class OMSClientGUI:
         self.market_tree.heading('change', text='24h Change %')
         
         self.market_tree.column('#0', width=100)
-        self.market_tree.column('bid', width=100)
-        self.market_tree.column('ask', width=100)
-        self.market_tree.column('last', width=100)
-        self.market_tree.column('volume', width=120)
-        self.market_tree.column('high', width=100)
-        self.market_tree.column('low', width=100)
-        self.market_tree.column('change', width=100)
+        self.market_tree.column('bid', width=100, anchor='e')
+        self.market_tree.column('ask', width=100, anchor='e')
+        self.market_tree.column('last', width=100, anchor='e')
+        self.market_tree.column('volume', width=120, anchor='e')
+        self.market_tree.column('high', width=100, anchor='e')
+        self.market_tree.column('low', width=100, anchor='e')
+        self.market_tree.column('change', width=100, anchor='e')
         
         self.market_tree.pack(fill='both', expand=True)
 
@@ -480,8 +480,11 @@ class OMSClientGUI:
         for item in self.market_tree.get_children():
             self.market_tree.delete(item)
         
+        # Sort prices by symbol to maintain consistent order
+        prices = sorted(price_data.get('prices', []), key=lambda x: x['symbol'])
+        
         # Add prices
-        for price in price_data.get('prices', []):
+        for price in prices:
             # Trading tab
             self.prices_tree.insert('', 'end', text=price['symbol'],
                                   values=(
