@@ -140,6 +140,11 @@ func (s *MarketDataService) Stop() error {
 
 func (s *MarketDataService) startSymbolStream(symbol string) error {
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
+		// Check if we have bid/ask data
+		if len(event.Bids) == 0 || len(event.Asks) == 0 {
+			return
+		}
+		
 		// Convert to our format and publish
 		data := map[string]interface{}{
 			"symbol":       event.Symbol,
