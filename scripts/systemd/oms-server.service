@@ -1,0 +1,26 @@
+[Unit]
+Description=OMS gRPC Server
+After=network.target oms-core.service
+Requires=oms-core.service
+
+[Service]
+Type=simple
+User=seunge
+WorkingDirectory=/home/seunge/project/mExOms
+ExecStart=/home/seunge/project/mExOms/bin/oms-server
+Restart=always
+RestartSec=10
+
+# Resource limits
+LimitNOFILE=100000
+LimitNPROC=50000
+
+# Environment
+Environment="GOMAXPROCS=4"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

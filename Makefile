@@ -1,153 +1,219 @@
-.PHONY: all build test clean install-deps proto run-nats run-redis
+# Multi-Exchange OMS Makefile
 
 # Variables
-GO := go
-CXX := g++
-CXXFLAGS := -std=c++17 -O3 -march=native -pthread -Wall -Wextra
-LDFLAGS := -lpthread -lnats -lredis++ -lhiredis -lssl -lcrypto
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOTEST=$(GOCMD) test
+GOGET=$(GOCMD) get
+GOMOD=$(GOCMD) mod
+GOFMT=$(GOCMD) fmt
+GOLINT=golangci-lint
+
+CXX=g++
+CXXFLAGS=-std=c++20 -O3 -Wall -Wextra -pthread -march=native
+LDFLAGS=-lpthread -latomic
 
 # Directories
-BUILD_DIR := build
-BIN_DIR := bin
-PROTO_DIR := proto
-CORE_DIR := core
+CORE_DIR=core
+GO_DIR=.
+BIN_DIR=bin
+BUILD_DIR=build
 
-# Targets
-all: build
+# Binary names
+CORE_BIN=$(BIN_DIR)/oms-core
+OMS_SERVER=$(BIN_DIR)/oms-server
+BINANCE_SPOT=$(BIN_DIR)/binance-spot
+BINANCE_FUTURES=$(BIN_DIR)/binance-futures
 
-install-deps:
-	@echo "Installing Go dependencies..."
-	go mod download
-	go mod tidy
-	@echo "Installing system dependencies..."
-	@echo "Please ensure you have installed: libnats-dev, libhiredis-dev, protobuf-compiler"
+# Default target
+.PHONY: all
+all: clean deps build
 
+# Install dependencies
+.PHONY: deps
+deps:
+	@echo "Installing dependencies..."
+	$(GOMOD) download
+	$(GOMOD) tidy
+	@echo "Installing protoc-gen-go..."
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Build all components
+.PHONY: build
 build: build-core build-services
 
+# Build C++ core
+.PHONY: build-core
 build-core:
 	@echo "Building C++ core engine..."
-	@mkdir -p $(BUILD_DIR) $(BIN_DIR)
-	cd $(CORE_DIR) && \
-		cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release && \
-		cmake --build $(BUILD_DIR) --parallel
-	$(CXX) $(CXXFLAGS) -I$(CORE_DIR)/include \
-		$(CORE_DIR)/engine/main.cpp \
-		$(CORE_DIR)/$(BUILD_DIR)/liboms_core.a \
-		-o $(BIN_DIR)/oms-engine $(LDFLAGS)
+	@mkdir -p $(BIN_DIR) $(BUILD_DIR)
+	cd $(CORE_DIR) && mkdir -p build && cd build && cmake .. && make -j$(nproc)
+	@cp $(CORE_DIR)/build/oms-core $(CORE_BIN)
+	@echo "C++ core built successfully: $(CORE_BIN)"
 
-build-services:
+# Build Go services
+.PHONY: build-services
+build-services: proto
 	@echo "Building Go services..."
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -o $(BIN_DIR)/binance-spot ./cmd/binance-spot/
-	$(GO) build -o $(BIN_DIR)/binance-futures ./cmd/binance-futures/
-	$(GO) build -o $(BIN_DIR)/grpc-gateway ./cmd/grpc-gateway/
-	$(GO) build -o $(BIN_DIR)/grpc-client ./cmd/grpc-client/
-	$(GO) build -o $(BIN_DIR)/test-grpc ./cmd/test-grpc/
-	$(GO) build -o $(BIN_DIR)/monitor ./cmd/monitor/
-	$(GO) build -o $(BIN_DIR)/backtest ./cmd/backtest/
+	
+	@echo "Building OMS server..."
+	$(GOBUILD) -o $(OMS_SERVER) -v ./cmd/oms-server
+	
+	@echo "Building Binance Spot connector..."
+	$(GOBUILD) -o $(BINANCE_SPOT) -v ./services/binance/spot
+	
+	@echo "Building Binance Futures connector..."
+	$(GOBUILD) -o $(BINANCE_FUTURES) -v ./services/binance/futures
+	
+	@echo "Go services built successfully"
 
+# Generate protobuf files
+.PHONY: proto
 proto:
 	@echo "Generating protobuf files..."
 	@mkdir -p pkg/proto
-	protoc -I $(PROTO_DIR) \
-		--go_out=pkg/proto --go_opt=paths=source_relative \
-		--go-grpc_out=pkg/proto --go-grpc_opt=paths=source_relative \
-		$(PROTO_DIR)/oms/v1/*.proto
+	protoc --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		proto/*.proto
 
-test:
+# Run tests
+.PHONY: test
+test: test-go test-core test-integration
+
+# Run Go tests
+.PHONY: test-go
+test-go:
 	@echo "Running Go tests..."
-	$(GO) test -v -race -cover ./...
+	$(GOTEST) -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+# Run C++ tests
+.PHONY: test-core
+test-core:
 	@echo "Running C++ tests..."
-	@if [ -f $(BIN_DIR)/core-tests ]; then \
-		$(BIN_DIR)/core-tests; \
+	@if [ -f $(CORE_DIR)/build/tests/core-tests ]; then \
+		$(CORE_DIR)/build/tests/core-tests; \
+	else \
+		echo "C++ tests not built yet"; \
 	fi
 
-test-benchmark:
-	@echo "Running performance benchmarks..."
-	$(GO) test -bench=. -benchmem ./test/benchmark/...
-
+# Run integration tests
+.PHONY: test-integration
 test-integration:
 	@echo "Running integration tests..."
-	$(GO) test -v ./test/integration/...
+	$(GOTEST) -v -tags=integration ./tests/integration/...
 
-benchmark:
-	@echo "Building benchmark tool..."
-	$(GO) build -o $(BIN_DIR)/benchmark ./cmd/benchmark/
-	@echo "Running comprehensive benchmarks..."
-	$(BIN_DIR)/benchmark -type all -duration 10s -output benchmark_report.md
+# Run benchmarks
+.PHONY: test-benchmark
+test-benchmark:
+	@echo "Running performance benchmarks..."
+	$(GOTEST) -bench=. -benchmem ./...
+	@if [ -f $(CORE_DIR)/build/tests/core-benchmarks ]; then \
+		$(CORE_DIR)/build/tests/core-benchmarks; \
+	fi
 
-clean:
-	@echo "Cleaning build artifacts..."
-	rm -rf $(BUILD_DIR) $(BIN_DIR)
-	rm -rf vendor/
-	find . -name "*.test" -delete
-	find . -name "*.out" -delete
-
-run-nats:
-	@echo "Starting NATS server..."
-	docker run -d --name nats-oms \
-		-p 4222:4222 -p 8222:8222 -p 6222:6222 \
-		nats:latest -js
-
-run-redis:
-	@echo "Starting Redis server..."
-	docker run -d --name redis-oms \
-		-p 6379:6379 \
-		redis:7-alpine
-
-run-postgres:
-	@echo "Starting PostgreSQL server..."
-	docker run -d --name postgres-oms \
-		-e POSTGRES_PASSWORD=oms_password \
-		-e POSTGRES_DB=oms_db \
-		-p 5432:5432 \
-		postgres:15-alpine
-
-run-vault:
-	@echo "Starting HashiCorp Vault..."
-	docker run -d --name vault-oms \
-		--cap-add=IPC_LOCK \
-		-e VAULT_DEV_ROOT_TOKEN_ID=root-token \
-		-p 8200:8200 \
-		hashicorp/vault
-
-docker-build:
-	@echo "Building Docker images..."
-	docker build -f deployments/docker/Dockerfile.engine -t oms-engine:latest .
-	docker build -f deployments/docker/Dockerfile.services -t oms-services:latest .
-
-docker-compose-up:
-	@echo "Starting all services with docker-compose..."
-	docker-compose -f deployments/docker/docker-compose.yml up -d
-
-docker-compose-down:
-	@echo "Stopping all services..."
-	docker-compose -f deployments/docker/docker-compose.yml down
-
+# Format code
+.PHONY: fmt
 fmt:
 	@echo "Formatting Go code..."
-	$(GO) fmt ./...
+	$(GOFMT) ./...
 	@echo "Formatting C++ code..."
 	find $(CORE_DIR) -name "*.cpp" -o -name "*.h" | xargs clang-format -i
 
+# Lint code
+.PHONY: lint
 lint:
 	@echo "Linting Go code..."
-	golangci-lint run
+	$(GOLINT) run ./...
 	@echo "Linting C++ code..."
-	cpplint --recursive $(CORE_DIR)/
+	cd $(CORE_DIR) && cppcheck --enable=all --suppress=missingIncludeSystem .
 
+# Clean build artifacts
+.PHONY: clean
+clean:
+	@echo "Cleaning build artifacts..."
+	rm -rf $(BIN_DIR) $(BUILD_DIR)
+	rm -rf $(CORE_DIR)/build
+	rm -f coverage.txt
+
+# Infrastructure commands
+.PHONY: run-nats
+run-nats:
+	@echo "Starting NATS server..."
+	docker run -d --name nats-oms -p 4222:4222 -p 8222:8222 nats:latest -js
+
+.PHONY: run-redis
+run-redis:
+	@echo "Starting Redis..."
+	docker run -d --name redis-oms -p 6379:6379 redis:latest
+
+.PHONY: run-postgres
+run-postgres:
+	@echo "Starting PostgreSQL..."
+	docker run -d --name postgres-oms -p 5432:5432 \
+		-e POSTGRES_PASSWORD=omspassword \
+		-e POSTGRES_DB=omsdb \
+		postgres:latest
+
+.PHONY: run-vault
+run-vault:
+	@echo "Starting HashiCorp Vault..."
+	docker run -d --name vault-oms -p 8200:8200 \
+		-e VAULT_DEV_ROOT_TOKEN_ID=root \
+		-e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
+		vault:latest
+
+# Start all infrastructure
+.PHONY: infra-up
+infra-up: run-nats run-vault
+	@echo "Infrastructure started"
+
+# Stop all infrastructure
+.PHONY: infra-down
+infra-down:
+	@echo "Stopping infrastructure..."
+	docker stop nats-oms redis-oms postgres-oms vault-oms 2>/dev/null || true
+	docker rm nats-oms redis-oms postgres-oms vault-oms 2>/dev/null || true
+
+# Development helpers
+.PHONY: dev
+dev: deps fmt lint build test
+	@echo "Development build complete"
+
+# Install pre-commit hooks
+.PHONY: install-hooks
+install-hooks:
+	@echo "Installing git hooks..."
+	cp scripts/pre-commit .git/hooks/
+	chmod +x .git/hooks/pre-commit
+
+# Generate documentation
+.PHONY: docs
+docs:
+	@echo "Generating documentation..."
+	godoc -http=:6060 &
+	@echo "Documentation server started at http://localhost:6060"
+
+# Show help
+.PHONY: help
 help:
-	@echo "Available targets:"
-	@echo "  make install-deps    - Install dependencies"
-	@echo "  make build          - Build all components"
-	@echo "  make test           - Run all tests"
+	@echo "Multi-Exchange OMS Makefile"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make all          - Clean, install deps, and build everything"
+	@echo "  make build        - Build all components"
+	@echo "  make build-core   - Build C++ core engine only"
+	@echo "  make build-services - Build Go services only"
+	@echo "  make test         - Run all tests"
 	@echo "  make test-benchmark - Run performance benchmarks"
-	@echo "  make proto          - Generate protobuf files"
-	@echo "  make clean          - Clean build artifacts"
-	@echo "  make run-nats       - Start NATS server"
-	@echo "  make run-redis      - Start Redis server"
-	@echo "  make run-postgres   - Start PostgreSQL server"
-	@echo "  make run-vault      - Start HashiCorp Vault"
-	@echo "  make docker-build   - Build Docker images"
-	@echo "  make fmt            - Format code"
-	@echo "  make lint           - Lint code"
+	@echo "  make fmt          - Format all code"
+	@echo "  make lint         - Lint all code"
+	@echo "  make clean        - Clean build artifacts"
+	@echo "  make infra-up     - Start infrastructure services"
+	@echo "  make infra-down   - Stop infrastructure services"
+	@echo "  make dev          - Full development build (deps, fmt, lint, build, test)"
+	@echo "  make help         - Show this help message"
+
+# Default make target
+.DEFAULT_GOAL := help

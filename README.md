@@ -80,27 +80,34 @@ make build
 
 ### Running the System
 
-1. Set environment variables:
+1. Build the project:
 ```bash
-export BINANCE_API_KEY="your-api-key"
-export BINANCE_API_SECRET="your-api-secret"
+make build
 ```
 
-2. Test the Binance connector:
+2. Run all services:
 ```bash
-go run cmd/test-binance/main.go
+# Start all services with logging
+./scripts/run-all.sh
+
+# Check service health
+./scripts/test-services.sh
+
+# Stop all services
+./scripts/stop-all.sh
 ```
 
-3. Start the full system:
+3. Or run individually:
 ```bash
 # Start C++ core engine
-./bin/oms-core &
+./core/build/oms-core
 
-# Start Binance connector
-./bin/binance-spot &
+# Start gRPC server
+./bin/oms-server
 
-# Start API gateway
-./bin/api-gateway
+# Start exchange connectors
+./bin/binance-spot
+./bin/binance-futures
 ```
 
 ## 📊 Features

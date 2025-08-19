@@ -1,0 +1,25 @@
+[Unit]
+Description=OMS Core Engine (C++)
+After=network.target
+
+[Service]
+Type=simple
+User=seunge
+WorkingDirectory=/home/seunge/project/mExOms
+ExecStart=/home/seunge/project/mExOms/core/build/oms-core
+Restart=always
+RestartSec=10
+
+# Performance tuning
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=90
+LimitNOFILE=1000000
+LimitNPROC=500000
+LimitRTPRIO=99
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,72 +1,104 @@
 cmake_minimum_required(VERSION 3.16)
-project(oms_core VERSION 1.0.0 LANGUAGES CXX)
+project(OMS_Core VERSION 1.0.0 LANGUAGES CXX)
 
-# C++17 standard (for compatibility with GCC 9)
-set(CMAKE_CXX_STANDARD 17)
+# C++20 standard
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Compiler flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -fsanitize=address -fsanitize=undefined")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
+
+# Enable position independent code
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Find required packages
 find_package(Threads REQUIRED)
 
 # Include directories
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-# Source files
-set(SOURCES
-    engine/order_manager.cpp
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# Header files
-set(HEADERS
-    include/types.h
-    include/ring_buffer.h
-    include/order_manager.h
+# Source files
+set(CORE_SOURCES
+    src/main.cpp
+)
+
+set(LIB_SOURCES
+    src/strategies/arbitrage_detector.cpp
+    src/strategies/market_maker.cpp
+    src/risk/risk_engine.cpp
 )
 
 # Create static library
-add_library(oms_core STATIC ${SOURCES})
-
-# Link libraries
-target_link_libraries(oms_core
-    PRIVATE
-        Threads::Threads
+add_library(oms_core_lib STATIC ${LIB_SOURCES})
+target_link_libraries(oms_core_lib 
+    Threads::Threads
+    atomic
 )
 
-# Set properties
-set_target_properties(oms_core PROPERTIES
-    VERSION ${PROJECT_VERSION}
-    POSITION_INDEPENDENT_CODE ON
+# Create executable
+add_executable(oms-core ${CORE_SOURCES})
+target_link_libraries(oms-core 
+    oms_core_lib
+    Threads::Threads
+    atomic
 )
 
-# Install targets
-install(TARGETS oms_core
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
+# Set runtime path
+set_target_properties(oms-core PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
-# Install headers
-install(FILES ${HEADERS}
-    DESTINATION include/oms
-)
+# Enable Link Time Optimization
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported OUTPUT error)
+if(ipo_supported)
+    set_property(TARGET oms-core PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_property(TARGET oms_core_lib PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
 
-# Build tests if enabled
-option(BUILD_TESTS "Build unit tests" OFF)
-if(BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+# CPU affinity and performance tuning
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(oms-core PRIVATE USE_CPU_AFFINITY)
+endif()
+
+# Testing
+option(BUILD_TESTS "Build tests" OFF)
+if(BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
     enable_testing()
     add_subdirectory(tests)
 endif()
 
-# Build benchmarks if enabled
-option(BUILD_BENCHMARKS "Build performance benchmarks" OFF)
-if(BUILD_BENCHMARKS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/CMakeLists.txt")
+# Benchmarks
+option(BUILD_BENCHMARKS "Build benchmarks" OFF)
+if(BUILD_BENCHMARKS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks")
     add_subdirectory(benchmarks)
 endif()
 
-# Export compile commands for development tools
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# Installation
+install(TARGETS oms-core oms_core_lib
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+install(DIRECTORY include/
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h"
+)
+
+# Summary
+message(STATUS "")
+message(STATUS "OMS Core Configuration:")
+message(STATUS "  Version: ${PROJECT_VERSION}")
+message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "  Compiler Flags: ${CMAKE_CXX_FLAGS}")
+message(STATUS "  Tests: ${BUILD_TESTS}")
+message(STATUS "  Benchmarks: ${BUILD_BENCHMARKS}")
+message(STATUS "")
