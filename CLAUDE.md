@@ -122,6 +122,11 @@ make clean
 - Throughput: 100,000+ orders/sec
 - Market data: 1,000,000+ messages/sec
 
+### Design Principles
+- **No Mock Data**: All market data must come from real-time WebSocket streams
+- **Single Source of Truth**: Binance WebSocket streams are the only data source
+- **Real-time Only**: 24hr statistics, volume, high/low prices all from WebSocket ticker streams
+
 ### Adding New Exchanges
 
 To add a new exchange:
