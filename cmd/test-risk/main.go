@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 	
-	"github.com/mExOms/oms/internal/risk"
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/internal/risk"
+	"github.com/mExOms/pkg/types"
 	"github.com/shopspring/decimal"
 )
 

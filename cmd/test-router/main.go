@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 	
-	"github.com/mExOms/oms/internal/exchange"
-	"github.com/mExOms/oms/internal/router"
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/internal/exchange"
+	"github.com/mExOms/internal/router"
+	"github.com/mExOms/pkg/types"
 	"github.com/shopspring/decimal"
 )
 

@@ -3,12 +3,12 @@ package exchange
 import (
 	"fmt"
 	
-	"github.com/mExOms/oms/pkg/types"
-	"github.com/mExOms/oms/services/binance"
+	"github.com/mExOms/pkg/types"
+	"github.com/mExOms/services/binance"
 	// TODO: Import new exchange packages here
-	// "github.com/mExOms/oms/services/bybit"
-	// "github.com/mExOms/oms/services/okx"
-	// "github.com/mExOms/oms/services/upbit"
+	// "github.com/mExOms/services/bybit"
+	// "github.com/mExOms/services/okx"
+	// "github.com/mExOms/services/upbit"
 	"github.com/spf13/viper"
 )
 

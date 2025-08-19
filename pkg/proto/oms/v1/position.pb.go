@@ -823,7 +823,7 @@ const file_oms_v1_position_proto_rawDesc = "" +
 	" \x01(\x01R\ravgCalcTimeUs\"\x17\n" +
 	"\x15GetRiskMetricsRequest\"G\n" +
 	"\x16GetRiskMetricsResponse\x12-\n" +
-	"\ametrics\x18\x01 \x01(\v2\x13.oms.v1.RiskMetricsR\ametricsB.Z,github.com/mExOms/oms/pkg/proto/oms/v1;omsv1b\x06proto3"
+	"\ametrics\x18\x01 \x01(\v2\x13.oms.v1.RiskMetricsR\ametricsB.Z,github.com/mExOms/pkg/proto/oms/v1;omsv1b\x06proto3"
 
 var (
 	file_oms_v1_position_proto_rawDescOnce sync.Once

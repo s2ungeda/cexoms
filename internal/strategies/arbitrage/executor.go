@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mExOms/oms/internal/account"
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/internal/account"
+	"github.com/mExOms/pkg/types"
 	"github.com/shopspring/decimal"
 )
 

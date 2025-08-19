@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package oms;
+
+option go_package = "./proto";
+
+// Order service definition
+service OrderService {
+  // Order management
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  
+  // Account information
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  rpc GetPositions(GetPositionsRequest) returns (GetPositionsResponse);
+  
+  // Real-time streaming
+  rpc StreamPrices(StreamPricesRequest) returns (stream PriceUpdate);
+  rpc StreamOrders(StreamOrdersRequest) returns (stream OrderUpdate);
+}
+
+// Order messages
+message Order {
+  string order_id = 1;
+  string exchange_order_id = 2;
+  string symbol = 3;
+  string side = 4;
+  string order_type = 5;
+  double quantity = 6;
+  double price = 7;
+  double filled_quantity = 8;
+  string status = 9;
+  string exchange = 10;
+  string market = 11;
+  string account_id = 12;
+  int64 created_at = 13;
+  int64 updated_at = 14;
+}
+
+// Place order
+message PlaceOrderRequest {
+  string symbol = 1;
+  string side = 2;
+  string order_type = 3;
+  double quantity = 4;
+  double price = 5;
+  string exchange = 6;
+  string market = 7;
+  string account_id = 8;
+  int32 leverage = 9;
+}
+
+message PlaceOrderResponse {
+  string order_id = 1;
+  string exchange_order_id = 2;
+  string status = 3;
+  int64 created_at = 4;
+}
+
+// Cancel order
+message CancelOrderRequest {
+  string order_id = 1;
+}
+
+message CancelOrderResponse {
+  string order_id = 1;
+  string status = 2;
+  int64 cancelled_at = 3;
+}
+
+// Get order
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message GetOrderResponse {
+  Order order = 1;
+}
+
+// List orders
+message ListOrdersRequest {
+  string status = 1;
+  string symbol = 2;
+  string exchange = 3;
+  string account_id = 4;
+}
+
+message ListOrdersResponse {
+  repeated Order orders = 1;
+}
+
+// Balance
+message Balance {
+  string asset = 1;
+  double free = 2;
+  double locked = 3;
+}
+
+message GetBalanceRequest {
+  string exchange = 1;
+  string market = 2;
+  string account_id = 3;
+}
+
+message GetBalanceResponse {
+  repeated Balance balances = 1;
+}
+
+// Positions
+message Position {
+  string symbol = 1;
+  string side = 2;
+  double size = 3;
+  double entry_price = 4;
+  double mark_price = 5;
+  double unrealized_pnl = 6;
+  double pnl_percentage = 7;
+  int32 leverage = 8;
+  double margin = 9;
+}
+
+message GetPositionsRequest {
+  string exchange = 1;
+  string account_id = 2;
+}
+
+message GetPositionsResponse {
+  repeated Position positions = 1;
+}
+
+// Streaming
+message StreamPricesRequest {
+  repeated string symbols = 1;
+}
+
+message PriceUpdate {
+  string exchange = 1;
+  string symbol = 2;
+  double bid_price = 3;
+  double bid_quantity = 4;
+  double ask_price = 5;
+  double ask_quantity = 6;
+  double last_price = 7;
+  int64 timestamp = 8;
+}
+
+message StreamOrdersRequest {
+  string account_id = 1;
+}
+
+message OrderUpdate {
+  Order order = 1;
+  string update_type = 2; // NEW, UPDATE, FILLED, CANCELLED
+}

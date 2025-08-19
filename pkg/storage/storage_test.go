@@ -8,7 +8,7 @@ import (
 	
 	"fmt"
 	
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/pkg/types"
 )
 
 func TestFileStorage(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	omsv1 "github.com/mExOms/oms/pkg/proto/oms/v1"
+	omsv1 "github.com/mExOms/pkg/proto/oms/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

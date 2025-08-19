@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 	
-	"github.com/mExOms/oms/internal/position"
+	"github.com/mExOms/internal/position"
 	"github.com/shopspring/decimal"
 )
 

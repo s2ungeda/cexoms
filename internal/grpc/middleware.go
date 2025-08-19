@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	omsv1 "github.com/mExOms/oms/pkg/proto/oms/v1"
+	omsv1 "github.com/mExOms/pkg/proto/oms/v1"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

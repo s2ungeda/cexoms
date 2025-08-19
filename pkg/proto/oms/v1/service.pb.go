@@ -47,7 +47,7 @@ const file_oms_v1_service_proto_rawDesc = "" +
 	"\fRefreshToken\x12\x1b.oms.v1.RefreshTokenRequest\x1a\x1c.oms.v1.RefreshTokenResponse\x12I\n" +
 	"\fCreateAPIKey\x12\x1b.oms.v1.CreateAPIKeyRequest\x1a\x1c.oms.v1.CreateAPIKeyResponse\x12F\n" +
 	"\vListAPIKeys\x12\x1a.oms.v1.ListAPIKeysRequest\x1a\x1b.oms.v1.ListAPIKeysResponse\x12I\n" +
-	"\fRevokeAPIKey\x12\x1b.oms.v1.RevokeAPIKeyRequest\x1a\x1c.oms.v1.RevokeAPIKeyResponseB.Z,github.com/mExOms/oms/pkg/proto/oms/v1;omsv1b\x06proto3"
+	"\fRevokeAPIKey\x12\x1b.oms.v1.RevokeAPIKeyRequest\x1a\x1c.oms.v1.RevokeAPIKeyResponseB.Z,github.com/mExOms/pkg/proto/oms/v1;omsv1b\x06proto3"
 
 var file_oms_v1_service_proto_goTypes = []any{
 	(*OrderRequest)(nil),                   // 0: oms.v1.OrderRequest

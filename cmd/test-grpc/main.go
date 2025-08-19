@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	omsv1 "github.com/mExOms/oms/pkg/proto/oms/v1"
+	omsv1 "github.com/mExOms/pkg/proto/oms/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

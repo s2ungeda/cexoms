@@ -503,7 +503,7 @@ const file_oms_v1_common_proto_rawDesc = "" +
 	"\x06Market\x12\x16\n" +
 	"\x12MARKET_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vMARKET_SPOT\x10\x01\x12\x12\n" +
-	"\x0eMARKET_FUTURES\x10\x02B.Z,github.com/mExOms/oms/pkg/proto/oms/v1;omsv1b\x06proto3"
+	"\x0eMARKET_FUTURES\x10\x02B.Z,github.com/mExOms/pkg/proto/oms/v1;omsv1b\x06proto3"
 
 var (
 	file_oms_v1_common_proto_rawDescOnce sync.Once

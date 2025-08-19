@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mExOms/oms/pkg/security"
+	"github.com/mExOms/pkg/security"
 )
 
 func main() {

@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 	
-	"github.com/mExOms/oms/internal/account"
-	"github.com/mExOms/oms/internal/exchange"
-	"github.com/mExOms/oms/pkg/cache"
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/internal/account"
+	"github.com/mExOms/internal/exchange"
+	"github.com/mExOms/pkg/cache"
+	"github.com/mExOms/pkg/types"
 	"github.com/shopspring/decimal"
 )
 

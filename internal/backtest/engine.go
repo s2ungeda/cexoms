@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mExOms/oms/internal/position"
-	"github.com/mExOms/oms/internal/risk"
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/internal/position"
+	"github.com/mExOms/internal/risk"
+	"github.com/mExOms/pkg/types"
 	"github.com/shopspring/decimal"
 )
 

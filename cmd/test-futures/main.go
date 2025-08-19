@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 	
-	"github.com/mExOms/oms/pkg/types"
-	"github.com/mExOms/oms/services/binance/futures"
+	"github.com/mExOms/pkg/types"
+	"github.com/mExOms/services/binance/futures"
 	"github.com/shopspring/decimal"
 )
 

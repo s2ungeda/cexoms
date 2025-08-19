@@ -721,7 +721,7 @@ const file_oms_v1_auth_proto_rawDesc = "" +
 	"\x17PERMISSION_WRITE_ORDERS\x10\x02\x12\x1d\n" +
 	"\x19PERMISSION_READ_POSITIONS\x10\x03\x12\x1f\n" +
 	"\x1bPERMISSION_READ_MARKET_DATA\x10\x04\x12\x14\n" +
-	"\x10PERMISSION_ADMIN\x10dB.Z,github.com/mExOms/oms/pkg/proto/oms/v1;omsv1b\x06proto3"
+	"\x10PERMISSION_ADMIN\x10dB.Z,github.com/mExOms/pkg/proto/oms/v1;omsv1b\x06proto3"
 
 var (
 	file_oms_v1_auth_proto_rawDescOnce sync.Once

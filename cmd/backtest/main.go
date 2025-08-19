@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/mExOms/oms/internal/backtest"
+	"github.com/mExOms/internal/backtest"
 	"github.com/shopspring/decimal"
 )
 

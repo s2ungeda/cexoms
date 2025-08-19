@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/mExOms/oms/internal/position"
-	omsv1 "github.com/mExOms/oms/pkg/proto/oms/v1"
+	"github.com/mExOms/internal/position"
+	omsv1 "github.com/mExOms/pkg/proto/oms/v1"
 	"github.com/shopspring/decimal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

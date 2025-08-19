@@ -1176,7 +1176,7 @@ const file_oms_v1_market_data_proto_rawDesc = "" +
 	"\bend_time\x18\x05 \x01(\v2\x11.oms.v1.TimestampR\aendTime\x12\x14\n" +
 	"\x05limit\x18\x06 \x01(\x05R\x05limit\":\n" +
 	"\x11GetKlinesResponse\x12%\n" +
-	"\x06klines\x18\x01 \x03(\v2\r.oms.v1.KlineR\x06klinesB.Z,github.com/mExOms/oms/pkg/proto/oms/v1;omsv1b\x06proto3"
+	"\x06klines\x18\x01 \x03(\v2\r.oms.v1.KlineR\x06klinesB.Z,github.com/mExOms/pkg/proto/oms/v1;omsv1b\x06proto3"
 
 var (
 	file_oms_v1_market_data_proto_rawDescOnce sync.Once

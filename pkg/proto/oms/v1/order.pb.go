@@ -752,7 +752,7 @@ const file_oms_v1_order_proto_rawDesc = "" +
 	"\bend_time\x18\a \x01(\v2\x11.oms.v1.TimestampR\aendTime\"Q\n" +
 	"\x12ListOrdersResponse\x12%\n" +
 	"\x06orders\x18\x01 \x03(\v2\r.oms.v1.OrderR\x06orders\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05totalB.Z,github.com/mExOms/oms/pkg/proto/oms/v1;omsv1b\x06proto3"
+	"\x05total\x18\x02 \x01(\x05R\x05totalB.Z,github.com/mExOms/pkg/proto/oms/v1;omsv1b\x06proto3"
 
 var (
 	file_oms_v1_order_proto_rawDescOnce sync.Once

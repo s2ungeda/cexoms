@@ -3,7 +3,7 @@ package nats
 import (
 	"time"
 	
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/pkg/types"
 )
 
 // OrderMessage represents an order message

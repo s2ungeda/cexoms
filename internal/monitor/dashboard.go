@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mExOms/oms/internal/position"
-	"github.com/mExOms/oms/internal/risk"
+	"github.com/mExOms/internal/position"
+	"github.com/mExOms/internal/risk"
 )
 
 // DashboardServer provides a web-based monitoring dashboard

@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mExOms/oms/internal/monitor"
-	"github.com/mExOms/oms/internal/position"
-	"github.com/mExOms/oms/internal/risk"
+	"github.com/mExOms/internal/monitor"
+	"github.com/mExOms/internal/position"
+	"github.com/mExOms/internal/risk"
 )
 
 var (

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	binance "github.com/adshao/go-binance/v2"
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/pkg/types"
 	"github.com/shopspring/decimal"
 )
 

@@ -7,7 +7,7 @@ import (
 	"time"
 	
 	"github.com/adshao/go-binance/v2/futures"
-	"github.com/mExOms/oms/pkg/types"
+	"github.com/mExOms/pkg/types"
 )
 
 // SubscribeKline subscribes to kline/candlestick data
