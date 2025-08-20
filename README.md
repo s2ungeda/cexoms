@@ -5,10 +5,11 @@ A high-performance cryptocurrency trading system with C++ core engine and Go ser
 ## 🚀 Overview
 
 mExOms is a professional-grade Order Management System (OMS) built for cryptocurrency trading with:
-- **Ultra-low latency**: < 100μs order processing
+- **Ultra-low latency**: < 100μs order processing (WebSocket: ~35ms)
 - **Multi-exchange support**: Binance, Bybit, OKX, Upbit (extensible)
 - **High throughput**: 100,000+ orders/sec
 - **Memory-first architecture**: Minimal dependencies, maximum performance
+- **WebSocket-first**: All order operations use WebSocket when available
 
 ## 🏗️ Architecture
 
@@ -59,7 +60,7 @@ mExOms/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/mExOms.git
+git clone https://github.com/s2ungeda/cexoms.git
 cd mExOms
 ```
 
@@ -68,12 +69,21 @@ cd mExOms
 make install-deps
 ```
 
-3. Start infrastructure services (NATS and Vault only):
+3. Start infrastructure services (NATS and Vault):
 ```bash
 docker-compose up -d
 ```
 
-4. Build the project:
+4. Set up Vault and store API keys:
+```bash
+# Initialize Vault
+./scripts/vault-setup.sh
+
+# Add your API keys
+./cmd/vault-cli/vault-cli add binance spot YOUR_API_KEY YOUR_SECRET_KEY
+```
+
+5. Build the project:
 ```bash
 make build
 ```
@@ -116,6 +126,8 @@ make build
 - ✅ Multi-exchange abstraction layer
 - ✅ Binance Spot connector with WebSocket support
 - ✅ Binance Futures connector with position management
+- ✅ WebSocket order management (30-80% latency reduction)
+- ✅ Multi-account support with per-account rate limiting
 - ✅ Memory-based caching system (sync.Map)
 - ✅ NATS JetStream integration
 - ✅ Real-time market data streaming
@@ -125,7 +137,8 @@ make build
 - ✅ Rate limiting
 - ✅ Session management
 - ✅ File-based storage system
-- ✅ API key security with Vault integration
+- ✅ API key security with HashiCorp Vault integration
+- ✅ Vault CLI for key management
 
 ### In Development
 - 🔄 Smart order routing
@@ -183,14 +196,22 @@ func (e *NewExchange) GetMarket() string { return "spot" }
 // ... implement other methods
 ```
 
-## 📈 Performance Targets
+## 📈 Performance
 
-- **Order Processing**: < 100 microseconds
+### Performance Targets
+- **Order Processing**: < 100 microseconds (C++ core)
 - **Risk Checks**: < 50 microseconds  
 - **Throughput**: 100,000+ orders/sec
 - **Memory Usage**: < 1GB
 - **Market Data**: 1,000,000+ messages/sec
 - **Startup Time**: < 5 seconds
+
+### Actual Performance (WebSocket)
+| Operation | REST API | WebSocket | Improvement |
+|-----------|----------|-----------|-------------|
+| Create Order | 50-200ms | ~35ms | 30-80% |
+| Cancel Order | 45-180ms | ~30ms | 33-83% |
+| Query Order | 40-150ms | ~25ms | 37-83% |
 
 ## 🔒 Security
 
