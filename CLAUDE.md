@@ -124,8 +124,11 @@ make clean
 
 ### Design Principles
 - **No Mock Data**: All market data must come from real-time WebSocket streams
-- **Single Source of Truth**: Binance WebSocket streams are the only data source
+- **Single Source of Truth**: Exchange WebSocket streams are the only data source
 - **Real-time Only**: 24hr statistics, volume, high/low prices all from WebSocket ticker streams
+- **WebSocket First**: All order operations must use WebSocket API when available
+- **Low Latency**: Persistent WebSocket connections for orders, market data, and user data
+- **REST as Fallback**: REST API only for initialization and when WebSocket is unavailable
 
 ### Adding New Exchanges
 

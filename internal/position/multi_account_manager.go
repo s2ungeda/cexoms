@@ -36,8 +36,8 @@ type MultiAccountPositionManager struct {
 	wg             sync.WaitGroup
 }
 
-// Position represents a single position
-type Position struct {
+// MultiAccountPosition represents a single position
+type MultiAccountPosition struct {
 	AccountID      string
 	Symbol         string
 	Side           types.PositionSide

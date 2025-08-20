@@ -14,7 +14,7 @@ type Exchange interface {
 	Disconnect() error
 	IsConnected() bool
 	
-	// Order operations
+	// Order operations (WebSocket preferred, REST as fallback)
 	CreateOrder(ctx context.Context, order *Order) (*Order, error)
 	CancelOrder(ctx context.Context, symbol string, orderID string) error
 	GetOrder(ctx context.Context, symbol string, orderID string) (*Order, error)
@@ -31,6 +31,12 @@ type Exchange interface {
 	// Exchange info
 	GetExchangeInfo() ExchangeInfo
 	GetSymbolInfo(symbol string) (*SymbolInfo, error)
+	
+	// WebSocket order manager (returns nil if not supported)
+	GetWebSocketOrderManager() WebSocketOrderManager
+	
+	// WebSocket capabilities
+	GetWebSocketInfo() ExchangeWebSocketInfo
 }
 
 
@@ -43,10 +49,16 @@ type Position struct {
 	EntryPrice    float64
 	MarkPrice     float64
 	UnrealizedPNL float64
+	UnrealizedPnL float64 // Alias for compatibility
 	RealizedPNL   float64
 	Margin        float64
 	Leverage      float64
 	UpdatedAt     time.Time
+}
+
+// Helper method for compatibility
+func (p *Position) GetUnrealizedPnL() float64 {
+	return p.UnrealizedPNL
 }
 
 

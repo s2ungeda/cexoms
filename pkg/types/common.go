@@ -47,21 +47,31 @@ const (
 	PositionSideBoth  = "BOTH"
 )
 
+// Type aliases for compatibility
+type OrderSide = string
+type PositionSide = string
+
 // Order represents a trading order
 type Order struct {
-	ID           string          `json:"id"`
-	Symbol       string          `json:"symbol"`
-	Side         string          `json:"side"`
-	Type         string          `json:"type"`
-	Price        decimal.Decimal `json:"price,omitempty"`
-	Quantity     decimal.Decimal `json:"quantity"`
-	StopPrice    decimal.Decimal `json:"stop_price,omitempty"`
-	TimeInForce  string          `json:"time_in_force,omitempty"`
-	ReduceOnly   bool            `json:"reduce_only,omitempty"`
-	ClosePosition bool           `json:"close_position,omitempty"`
-	PositionSide string          `json:"position_side,omitempty"`
-	WorkingType  string          `json:"working_type,omitempty"`
-	CreatedAt    time.Time       `json:"created_at"`
+	ID              string                 `json:"id"`
+	ClientOrderID   string                 `json:"client_order_id,omitempty"`
+	ExchangeOrderID string                 `json:"exchange_order_id,omitempty"`
+	Symbol          string                 `json:"symbol"`
+	Side            string                 `json:"side"`
+	Type            string                 `json:"type"`
+	Status          string                 `json:"status,omitempty"`
+	Price           decimal.Decimal        `json:"price,omitempty"`
+	Quantity        decimal.Decimal        `json:"quantity"`
+	StopPrice       decimal.Decimal        `json:"stop_price,omitempty"`
+	TimeInForce     string                 `json:"time_in_force,omitempty"`
+	ReduceOnly      bool                   `json:"reduce_only,omitempty"`
+	ClosePosition   bool                   `json:"close_position,omitempty"`
+	PositionSide    string                 `json:"position_side,omitempty"`
+	WorkingType     string                 `json:"working_type,omitempty"`
+	CreatedAt       time.Time              `json:"created_at"`
+	UpdatedAt       time.Time              `json:"updated_at,omitempty"`
+	MarginType      string                 `json:"margin_type,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // OrderResponse represents the response after creating/updating an order
@@ -91,6 +101,11 @@ type Trade struct {
 	Time         int64  `json:"time"`
 	IsBuyerMaker bool   `json:"is_buyer_maker"`
 }
+
+// Callback types for WebSocket streams
+type OrderBookCallback func(symbol string, orderBook *OrderBook)
+type TradeCallback func(symbol string, trade *Trade)
+type TickerCallback func(symbol string, ticker *Ticker)
 
 // OrderBook represents market depth
 type OrderBook struct {

@@ -75,3 +75,6 @@ temp/
 secrets/
 *.secret
 vault-token
+
+# Downloaded binaries
+vault_*.zip

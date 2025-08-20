@@ -106,11 +106,16 @@ func (s *MarketDataService) Start() error {
 			log.Printf("Failed to start ticker stream for %s: %v", symbol, err)
 		}
 		
+		// Start 24hr ticker stream for real-time stats
+		if err := s.start24hrTickerStream(symbol); err != nil {
+			log.Printf("Failed to start 24hr ticker stream for %s: %v", symbol, err)
+		}
+		
 		// Small delay to avoid rate limits
 		time.Sleep(100 * time.Millisecond)
 	}
 	
-	// Start REST API price poller as backup
+	// Start REST API price poller as backup (reduced frequency)
 	go s.pollPrices()
 	
 	return nil
@@ -224,8 +229,55 @@ func (s *MarketDataService) startTickerStream(symbol string) error {
 	return nil
 }
 
+func (s *MarketDataService) start24hrTickerStream(symbol string) error {
+	ws24hrTickerHandler := func(event *binance.WsMarketStatEvent) {
+		// Convert to our format and publish with 24hr stats
+		data := map[string]interface{}{
+			"symbol":       event.Symbol,
+			"last_price":   event.LastPrice,
+			"bid_price":    event.BidPrice,
+			"ask_price":    event.AskPrice,
+			"open_price":   event.OpenPrice,
+			"high_24h":     event.HighPrice,
+			"low_24h":      event.LowPrice,
+			"volume_24h":   event.Volume,
+			"quote_volume": event.QuoteVolume,
+			"change_24h":   event.PriceChangePercent,
+			"change_abs":   event.PriceChange,
+			"trades_24h":   event.Count,
+			"timestamp":    time.Now(),
+		}
+		
+		s.publishMarketData("binance", "spot", symbol, data)
+	}
+	
+	errHandler := func(err error) {
+		log.Printf("24hr Ticker WebSocket error for %s: %v", symbol, err)
+	}
+	
+	doneC, stopC, err := binance.WsMarketStatServe(symbol, ws24hrTickerHandler, errHandler)
+	if err != nil {
+		return fmt.Errorf("failed to start 24hr ticker stream: %w", err)
+	}
+	
+	s.wsHandlers[fmt.Sprintf("24hr_%s", symbol)] = stopC
+	
+	// Monitor the done channel
+	go func() {
+		select {
+		case <-doneC:
+			log.Printf("24hr ticker stream for %s closed", symbol)
+		case <-s.doneC:
+			return
+		}
+	}()
+	
+	log.Printf("Started 24hr ticker stream for %s", symbol)
+	return nil
+}
+
 func (s *MarketDataService) pollPrices() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(30 * time.Second) // Reduced frequency since we have WebSocket
 	defer ticker.Stop()
 	
 	for {

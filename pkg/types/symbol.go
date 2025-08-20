@@ -26,6 +26,10 @@ const (
 	MarketSpot    MarketType = "SPOT"
 	MarketFutures MarketType = "FUTURES"
 	MarketMargin  MarketType = "MARGIN"
+	
+	// Aliases for compatibility
+	MarketTypeSpot    = MarketSpot
+	MarketTypeFutures = MarketFutures
 )
 
 // Parse parses a standard symbol string

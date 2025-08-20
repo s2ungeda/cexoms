@@ -24,13 +24,15 @@ type Config struct {
 
 // Factory creates exchange instances
 type Factory struct {
-	configs map[types.ExchangeType]*Config
+	configs        map[types.ExchangeType]*Config
+	accountManager types.AccountManager
 }
 
 // NewFactory creates a new exchange factory
-func NewFactory() *Factory {
+func NewFactory(accountManager types.AccountManager) *Factory {
 	return &Factory{
-		configs: make(map[types.ExchangeType]*Config),
+		configs:        make(map[types.ExchangeType]*Config),
+		accountManager: accountManager,
 	}
 }
 
@@ -68,18 +70,16 @@ func (f *Factory) CreateExchange(exchangeType types.ExchangeType) (types.Exchang
 	
 	switch exchangeType {
 	case types.ExchangeBinanceSpot:
-		return binance.NewBinanceSpotConnector(
-			config.APIKey,
-			config.SecretKey,
+		return binance.NewBinanceSpotMultiAccount(
+			f.accountManager,
 			config.TestNet,
-		), nil
+		)
 		
 	case types.ExchangeBinanceFutures:
-		return binance.NewBinanceFuturesConnector(
-			config.APIKey,
-			config.SecretKey,
+		return binance.NewBinanceFuturesMultiAccount(
+			f.accountManager,
 			config.TestNet,
-		), nil
+		)
 		
 	// TODO: Add new exchanges here following this pattern:
 	// case types.ExchangeBybitSpot:
