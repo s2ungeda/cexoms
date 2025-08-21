@@ -128,13 +128,17 @@ type FuturesTrade struct {
 // PositionRisk represents position risk information
 type PositionRisk struct {
 	Symbol             string          `json:"symbol"`
-	PositionAmount     decimal.Decimal `json:"position_amount"`
+	Side               Side            `json:"side"`
+	PositionAmt        decimal.Decimal `json:"position_amt"`
+	PositionAmount     decimal.Decimal `json:"position_amount"` // Alias for backward compatibility
 	EntryPrice         decimal.Decimal `json:"entry_price"`
 	MarkPrice          decimal.Decimal `json:"mark_price"`
-	UnrealizedPnL      decimal.Decimal `json:"unrealized_pnl"`
+	UnrealizedProfit   decimal.Decimal `json:"unrealized_profit"`
+	UnrealizedPnL      decimal.Decimal `json:"unrealized_pnl"` // Alias for backward compatibility
 	LiquidationPrice   decimal.Decimal `json:"liquidation_price"`
 	Leverage           int             `json:"leverage"`
-	MaxNotionalValue   decimal.Decimal `json:"max_notional_value"`
+	MaxNotional        decimal.Decimal `json:"max_notional"`
+	MaxNotionalValue   decimal.Decimal `json:"max_notional_value"` // Alias for backward compatibility
 	MarginType         string          `json:"margin_type"`
 	IsolatedMargin     decimal.Decimal `json:"isolated_margin"`
 	IsAutoAddMargin    bool            `json:"is_auto_add_margin"`

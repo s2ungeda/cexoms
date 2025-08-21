@@ -924,3 +924,281 @@ func (b *BinanceFuturesMultiAccount) convertFuturesOrderBook(event *futures.WsDe
 		UpdatedAt:    time.Now(),
 	}
 }
+
+// GetPositionRisk retrieves detailed position risk info for a symbol
+func (b *BinanceFuturesMultiAccount) GetPositionRisk(ctx context.Context, accountName, symbol string) (*types.PositionRisk, error) {
+	b.mu.RLock()
+	accountID := accountName
+	if accountID == "" {
+		accountID = b.currentAccount
+	}
+	client, exists := b.clients[accountID]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return nil, fmt.Errorf("account %s not connected", accountID)
+	}
+	
+	// Check rate limit
+	if err := b.checkRateLimit(accountID, 5); err != nil {
+		return nil, err
+	}
+	
+	// Get position risk info
+	service := client.NewGetPositionRiskService()
+	if symbol != "" {
+		service.Symbol(symbol)
+	}
+	
+	risks, err := service.Do(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get position risk: %w", err)
+	}
+	
+	// Update rate limit
+	b.updateRateLimit(accountID, 5)
+	
+	// Find the position for the symbol
+	for _, risk := range risks {
+		if risk.Symbol == symbol {
+			positionAmt, _ := decimal.NewFromString(risk.PositionAmt)
+			if positionAmt.IsZero() {
+				return nil, fmt.Errorf("no position found for symbol %s", symbol)
+			}
+			
+			entryPrice, _ := decimal.NewFromString(risk.EntryPrice)
+			markPrice, _ := decimal.NewFromString(risk.MarkPrice)
+			unRealizedProfit, _ := decimal.NewFromString(risk.UnRealizedProfit)
+			liquidationPrice, _ := decimal.NewFromString(risk.LiquidationPrice)
+			leverage, _ := strconv.Atoi(risk.Leverage)
+			maxNotional, _ := decimal.NewFromString(risk.MaxNotional)
+			
+			side := types.Side("LONG")
+			if positionAmt.LessThan(decimal.Zero) {
+				side = types.Side("SHORT")
+				positionAmt = positionAmt.Abs()
+			}
+			
+			return &types.PositionRisk{
+				Symbol:           risk.Symbol,
+				Side:             side,
+				PositionAmt:      positionAmt,
+				EntryPrice:       entryPrice,
+				MarkPrice:        markPrice,
+				UnrealizedProfit: unRealizedProfit,
+				LiquidationPrice: liquidationPrice,
+				Leverage:         leverage,
+				MarginType:       risk.MarginType,
+				IsolatedMargin:   decimal.RequireFromString(risk.IsolatedMargin),
+				IsAutoAddMargin:  risk.IsAutoAddMargin,
+				MaxNotional:      maxNotional,
+				UpdateTime:       time.UnixMilli(risk.UpdateTime),
+			}, nil
+		}
+	}
+	
+	return nil, fmt.Errorf("position not found for symbol %s", symbol)
+}
+
+// ClosePosition closes a position for a symbol
+func (b *BinanceFuturesMultiAccount) ClosePosition(ctx context.Context, accountName, symbol string, reduceOnly bool) error {
+	// Get position risk first to determine side and quantity
+	positionRisk, err := b.GetPositionRisk(ctx, accountName, symbol)
+	if err != nil {
+		return fmt.Errorf("failed to get position risk: %w", err)
+	}
+	
+	// Determine order side (opposite of position side)
+	var orderSide types.OrderSide
+	if positionRisk.Side == types.Side("LONG") {
+		orderSide = types.OrderSideSell
+	} else {
+		orderSide = types.OrderSideBuy
+	}
+	
+	// Create market order to close position
+	order := &types.Order{
+		Symbol:       symbol,
+		Side:         orderSide,
+		Type:         types.OrderTypeMarket,
+		Quantity:     positionRisk.PositionAmt,
+		ReduceOnly:   true, // Always true when closing position
+		TimeInForce:  types.TimeInForceGTC,
+		PositionSide: "BOTH", // For one-way mode
+	}
+	
+	// Use the account's order creation
+	b.mu.Lock()
+	oldAccount := b.currentAccount
+	if accountName != "" && accountName != b.currentAccount {
+		b.currentAccount = accountName
+	}
+	b.mu.Unlock()
+	
+	// Create the order
+	_, err = b.CreateOrder(ctx, order)
+	
+	// Restore original account
+	b.mu.Lock()
+	b.currentAccount = oldAccount
+	b.mu.Unlock()
+	
+	if err != nil {
+		return fmt.Errorf("failed to close position: %w", err)
+	}
+	
+	return nil
+}
+
+// AdjustPositionMargin adjusts isolated margin for a position
+func (b *BinanceFuturesMultiAccount) AdjustPositionMargin(ctx context.Context, accountName, symbol string, amount decimal.Decimal, addOrReduce int) error {
+	b.mu.RLock()
+	accountID := accountName
+	if accountID == "" {
+		accountID = b.currentAccount
+	}
+	client, exists := b.clients[accountID]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("account %s not connected", accountID)
+	}
+	
+	// Check rate limit
+	if err := b.checkRateLimit(accountID, 1); err != nil {
+		return err
+	}
+	
+	// Adjust position margin
+	// addOrReduce: 1=add, 2=reduce
+	service := client.NewUpdatePositionMarginService().
+		Symbol(symbol).
+		Amount(amount.String()).
+		Type(addOrReduce)
+	
+	result, err := service.Do(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to adjust position margin: %w", err)
+	}
+	
+	// Update rate limit
+	b.updateRateLimit(accountID, 1)
+	
+	// Log the result
+	fmt.Printf("Position margin adjusted - Code: %d, Msg: %s, Amount: %s, Type: %d\n", 
+		result.Code, result.Msg, result.Amount, result.Type)
+	
+	return nil
+}
+
+// SubscribePositionUpdates subscribes to position updates via WebSocket
+func (b *BinanceFuturesMultiAccount) SubscribePositionUpdates(accountName string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	
+	accountID := accountName
+	if accountID == "" {
+		accountID = b.currentAccount
+	}
+	
+	// Check if user data stream is already active
+	wsManager, exists := b.wsManagers[accountID]
+	if !exists {
+		return fmt.Errorf("no WebSocket manager for account %s", accountID)
+	}
+	
+	// If user data stream is already active, position updates are included
+	if wsManager.userDataStream != nil {
+		return nil
+	}
+	
+	// Otherwise, start user data stream for this account
+	client, exists := b.clients[accountID]
+	if !exists {
+		return fmt.Errorf("account %s not connected", accountID)
+	}
+	
+	// Get listen key
+	listenKey, err := client.NewStartUserStreamService().Do(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get listen key: %w", err)
+	}
+	
+	// Create enhanced handler with position tracking
+	wsHandler := b.createEnhancedUserDataHandler(accountID)
+	
+	// Start WebSocket
+	done, stop, err := futures.WsUserDataServe(listenKey, wsHandler, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start user data stream: %w", err)
+	}
+	
+	wsManager.userDataStream = &WebSocketStream{
+		Done: done,
+		Stop: stop,
+	}
+	
+	// Keep listen key alive
+	go b.keepAliveListenKey(accountID, listenKey)
+	
+	return nil
+}
+
+// createEnhancedUserDataHandler creates an enhanced handler that tracks positions
+func (b *BinanceFuturesMultiAccount) createEnhancedUserDataHandler(accountID string) futures.WsUserDataHandler {
+	return func(event *futures.WsUserDataEvent) {
+		switch event.Event {
+		case futures.UserDataEventTypeOrderTradeUpdate:
+			// Handle order update
+			b.handleOrderUpdate(accountID, event.OrderTradeUpdate)
+			
+		case futures.UserDataEventTypeAccountUpdate:
+			// Handle account update with position tracking
+			b.handleEnhancedAccountUpdate(accountID, event.AccountUpdate)
+			
+		case futures.UserDataEventTypeMarginCall:
+			// Handle margin call
+			b.handleMarginCall(accountID, event)
+		}
+	}
+}
+
+// handleEnhancedAccountUpdate handles account updates with position history tracking
+func (b *BinanceFuturesMultiAccount) handleEnhancedAccountUpdate(accountID string, update *futures.WsAccountUpdate) {
+	// Update positions
+	for _, pos := range update.Positions {
+		positionAmt, _ := decimal.NewFromString(pos.Amount)
+		entryPrice, _ := decimal.NewFromString(pos.EntryPrice)
+		unrealizedPnL, _ := decimal.NewFromString(pos.UnrealizedPnL)
+		
+		b.mu.Lock()
+		if positionAmt.IsZero() {
+			// Position closed - record history
+			if oldPos, exists := b.positions[accountID][pos.Symbol]; exists {
+				// TODO: Save position history to file
+				fmt.Printf("[%s] Position closed - Symbol: %s, Entry: %f, PnL: %s\n",
+					accountID, pos.Symbol, oldPos.EntryPrice, pos.UnrealizedPnL)
+			}
+			delete(b.positions[accountID], pos.Symbol)
+		} else {
+			// Update or create position
+			b.positions[accountID][pos.Symbol] = &types.Position{
+				Exchange:      "binance",
+				Symbol:        pos.Symbol,
+				Quantity:      positionAmt.Abs().InexactFloat64(),
+				Side:          b.getPositionSide(positionAmt),
+				EntryPrice:    entryPrice.InexactFloat64(),
+				UnrealizedPNL: unrealizedPnL.InexactFloat64(),
+				UpdatedAt:     time.Now(),
+			}
+		}
+		b.mu.Unlock()
+	}
+	
+	// Update balances
+	for _, bal := range update.Balances {
+		// Record balance changes
+		fmt.Printf("[%s] Balance update - Asset: %s, Balance: %s, Cross: %s\n",
+			accountID, bal.Asset, bal.Balance, bal.CrossWalletBalance)
+	}
+}

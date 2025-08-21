@@ -579,3 +579,204 @@ func (m *BinanceFuturesWSOrderManager) updateMetric(update func(*types.WebSocket
 	defer m.metricsMu.Unlock()
 	update(&m.metrics)
 }
+
+// ChangeInitialLeverage changes the initial leverage for a symbol
+func (m *BinanceFuturesWSOrderManager) ChangeInitialLeverage(ctx context.Context, symbol string, leverage int) error {
+	if !m.connected.Load() {
+		return fmt.Errorf("WebSocket not connected")
+	}
+
+	timestamp := time.Now().UnixMilli()
+	requestID := fmt.Sprintf("futures_leverage_%d_%d", timestamp, m.requestID.Add(1))
+
+	params := map[string]interface{}{
+		"symbol":    symbol,
+		"leverage":  leverage,
+		"timestamp": timestamp,
+		"apiKey":    m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	resp, err := m.sendRequest(ctx, "leverage.change", params, requestID)
+	if err != nil {
+		return err
+	}
+
+	// Check if successful
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return fmt.Errorf("failed to parse leverage response: %v", err)
+	}
+
+	// Log the result
+	if newLeverage, ok := result["leverage"]; ok {
+		fmt.Printf("Leverage changed for %s to %v\n", symbol, newLeverage)
+	}
+
+	return nil
+}
+
+// ChangeMarginType changes the margin type for a symbol (ISOLATED/CROSSED)
+func (m *BinanceFuturesWSOrderManager) ChangeMarginType(ctx context.Context, symbol string, marginType string) error {
+	if !m.connected.Load() {
+		return fmt.Errorf("WebSocket not connected")
+	}
+
+	// Validate margin type
+	if marginType != "ISOLATED" && marginType != "CROSSED" {
+		return fmt.Errorf("invalid margin type: %s (must be ISOLATED or CROSSED)", marginType)
+	}
+
+	timestamp := time.Now().UnixMilli()
+	requestID := fmt.Sprintf("futures_margin_type_%d_%d", timestamp, m.requestID.Add(1))
+
+	params := map[string]interface{}{
+		"symbol":     symbol,
+		"marginType": marginType,
+		"timestamp":  timestamp,
+		"apiKey":     m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	_, err := m.sendRequest(ctx, "marginType.change", params, requestID)
+	if err != nil {
+		// Check if error is due to existing position
+		if err.Error() == "request error: -4048 - Margin type cannot be changed if there exists position" {
+			return fmt.Errorf("cannot change margin type: position exists for %s", symbol)
+		}
+		return err
+	}
+
+	fmt.Printf("Margin type changed for %s to %s\n", symbol, marginType)
+	return nil
+}
+
+// GetMaxLeverage gets the maximum leverage allowed for a symbol
+func (m *BinanceFuturesWSOrderManager) GetMaxLeverage(ctx context.Context, symbol string) (int, error) {
+	if !m.connected.Load() {
+		return 0, fmt.Errorf("WebSocket not connected")
+	}
+
+	timestamp := time.Now().UnixMilli()
+	requestID := fmt.Sprintf("futures_leverage_brackets_%d_%d", timestamp, m.requestID.Add(1))
+
+	params := map[string]interface{}{
+		"symbol":    symbol,
+		"timestamp": timestamp,
+		"apiKey":    m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	resp, err := m.sendRequest(ctx, "leverageBracket.query", params, requestID)
+	if err != nil {
+		return 0, err
+	}
+
+	// Parse response to find max leverage
+	var brackets []map[string]interface{}
+	if err := json.Unmarshal(resp.Result, &brackets); err != nil {
+		return 0, fmt.Errorf("failed to parse leverage brackets: %v", err)
+	}
+
+	// Find the bracket with highest notional value (last bracket)
+	maxLeverage := 0
+	for _, bracket := range brackets {
+		if leverage, ok := bracket["initialLeverage"].(float64); ok {
+			if int(leverage) > maxLeverage {
+				maxLeverage = int(leverage)
+			}
+		}
+	}
+
+	if maxLeverage == 0 {
+		return 0, fmt.Errorf("could not determine max leverage for %s", symbol)
+	}
+
+	return maxLeverage, nil
+}
+
+// GetPositionMode gets the current position mode (One-way or Hedge mode)
+func (m *BinanceFuturesWSOrderManager) GetPositionMode(ctx context.Context) (string, error) {
+	if !m.connected.Load() {
+		return "", fmt.Errorf("WebSocket not connected")
+	}
+
+	timestamp := time.Now().UnixMilli()
+	requestID := fmt.Sprintf("futures_position_mode_%d_%d", timestamp, m.requestID.Add(1))
+
+	params := map[string]interface{}{
+		"timestamp": timestamp,
+		"apiKey":    m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	resp, err := m.sendRequest(ctx, "positionMode.get", params, requestID)
+	if err != nil {
+		return "", err
+	}
+
+	// Parse response
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return "", fmt.Errorf("failed to parse position mode response: %v", err)
+	}
+
+	if dualSidePosition, ok := result["dualSidePosition"].(bool); ok {
+		if dualSidePosition {
+			return "HEDGE", nil
+		}
+		return "ONE_WAY", nil
+	}
+
+	return "", fmt.Errorf("could not determine position mode")
+}
+
+// ChangePositionMode changes the position mode (One-way or Hedge mode)
+func (m *BinanceFuturesWSOrderManager) ChangePositionMode(ctx context.Context, dualSidePosition bool) error {
+	if !m.connected.Load() {
+		return fmt.Errorf("WebSocket not connected")
+	}
+
+	timestamp := time.Now().UnixMilli()
+	requestID := fmt.Sprintf("futures_position_mode_change_%d_%d", timestamp, m.requestID.Add(1))
+
+	params := map[string]interface{}{
+		"dualSidePosition": dualSidePosition,
+		"timestamp":        timestamp,
+		"apiKey":           m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	_, err := m.sendRequest(ctx, "positionMode.change", params, requestID)
+	if err != nil {
+		return err
+	}
+
+	mode := "ONE_WAY"
+	if dualSidePosition {
+		mode = "HEDGE"
+	}
+	fmt.Printf("Position mode changed to %s\n", mode)
+
+	return nil
+}
