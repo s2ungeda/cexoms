@@ -484,6 +484,20 @@ func (po *PositionOptimizer) applyPositionConstraints(size decimal.Decimal, acco
 	return size
 }
 
+// PortfolioSummary represents portfolio summary
+type PortfolioSummary struct {
+	TotalValue       decimal.Decimal
+	GlobalPositions  map[string]*GlobalPosition
+	AccountSummaries map[string]*AccountSummary
+}
+
+// OptimizerAccountSummary represents account-level summary for optimizer
+type OptimizerAccountSummary struct {
+	AccountID         string
+	TotalValue        decimal.Decimal
+	PositionsBySymbol map[string]*MultiAccountPosition
+}
+
 // calculateCurrentWeights calculates current portfolio weights
 func (po *PositionOptimizer) calculateCurrentWeights(portfolio *PortfolioSummary) map[string]decimal.Decimal {
 	weights := make(map[string]decimal.Decimal)
@@ -657,7 +671,7 @@ func (ew *EqualWeightOptimizer) OptimizePositions(accounts []*types.Account, sig
 		account := accounts[accountIndex]
 		
 		// Calculate equal weight position size
-		balance, _ := ew.getAccountBalance(account.ID)
+		balance := ew.getAccountBalance(account.ID)
 		positionSize := balance.Mul(weightPerSignal)
 		
 		allocation := PositionAllocation{

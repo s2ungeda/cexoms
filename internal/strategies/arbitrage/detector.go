@@ -204,8 +204,8 @@ func (ad *ArbitrageDetector) GetOpportunityChannel() <-chan *ArbitrageOpportunit
 // subscribeToPriceFeed subscribes to price updates from an exchange
 func (ad *ArbitrageDetector) subscribeToPriceFeed(exchangeName string, exchange types.ExchangeMultiAccount, symbol string) error {
 	// Subscribe to order book updates
-	callback := func(orderBook *types.OrderBook) {
-		ad.updatePriceFeed(exchangeName, symbol, orderBook)
+	callback := func(sym string, orderBook *types.OrderBook) {
+		ad.updatePriceFeed(exchangeName, sym, orderBook)
 	}
 	
 	return exchange.SubscribeOrderBook(symbol, callback)
@@ -241,7 +241,7 @@ func (ad *ArbitrageDetector) updatePriceFeed(exchangeName, symbol string, orderB
 func (ad *ArbitrageDetector) detectOpportunities(symbol string) {
 	// Collect prices from all exchanges
 	var priceData []PriceFeed
-	for exchangeName, symbols := range ad.priceFeeds {
+	for _, symbols := range ad.priceFeeds {
 		if feed, exists := symbols[symbol]; exists {
 			// Skip stale prices
 			if time.Since(feed.LastUpdate) > 1*time.Second {

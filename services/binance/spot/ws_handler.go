@@ -12,17 +12,23 @@ import (
 
 func (bs *BinanceSpot) SubscribeKline(symbol string, interval string) error {
 	wsHandler := func(event *binance.WsKlineEvent) {
+		open, _ := decimal.NewFromString(event.Kline.Open)
+		high, _ := decimal.NewFromString(event.Kline.High)
+		low, _ := decimal.NewFromString(event.Kline.Low)
+		close, _ := decimal.NewFromString(event.Kline.Close)
+		volume, _ := decimal.NewFromString(event.Kline.Volume)
+		quoteVolume, _ := decimal.NewFromString(event.Kline.QuoteVolume)
+		
 		kline := &types.Kline{
-			Symbol:    event.Symbol,
-			Interval:  interval,
-			OpenTime:  event.Kline.StartTime,
-			CloseTime: event.Kline.EndTime,
-			Open:      event.Kline.Open,
-			High:      event.Kline.High,
-			Low:       event.Kline.Low,
-			Close:     event.Kline.Close,
-			Volume:    event.Kline.Volume,
-			IsFinal:   event.Kline.IsFinal,
+			OpenTime:    time.Unix(event.Kline.StartTime/1000, 0),
+			Open:        open,
+			High:        high,
+			Low:         low,
+			Close:       close,
+			Volume:      volume,
+			QuoteVolume: quoteVolume,
+			CloseTime:   time.Unix(event.Kline.EndTime/1000, 0),
+			Trades:      int(event.Kline.TradeNum),
 		}
 		
 		// Cache latest kline
@@ -101,7 +107,6 @@ func (bs *BinanceSpot) SubscribeOrderBook(symbol string, levels int) error {
 	wsHandler := func(event *binance.WsDepthEvent) {
 		orderBook := &types.OrderBook{
 			Symbol:       event.Symbol,
-			LastUpdateID: event.LastUpdateID,
 			Bids:         make([]types.PriceLevel, 0, len(event.Bids)),
 			Asks:         make([]types.PriceLevel, 0, len(event.Asks)),
 		}
@@ -154,13 +159,20 @@ func (bs *BinanceSpot) SubscribeOrderBook(symbol string, levels int) error {
 
 func (bs *BinanceSpot) SubscribeTrades(symbol string) error {
 	wsHandler := func(event *binance.WsTradeEvent) {
+		price, _ := decimal.NewFromString(event.Price)
+		quantity, _ := decimal.NewFromString(event.Quantity)
+		
 		trade := &types.Trade{
-			ID:           fmt.Sprintf("%d", event.TradeID),
-			Symbol:       event.Symbol,
-			Price:        event.Price,
-			Quantity:     event.Quantity,
-			Time:         event.Time,
-			IsBuyerMaker: event.IsBuyerMaker,
+			TradeID:  fmt.Sprintf("%d", event.TradeID),
+			Symbol:   event.Symbol,
+			Price:    price,
+			Quantity: quantity,
+			Time:     time.Unix(0, event.Time*int64(time.Millisecond)),
+			Side:     types.OrderSideSell, // IsBuyerMaker means seller is maker
+		}
+		
+		if event.IsBuyerMaker {
+			trade.Side = types.OrderSideBuy
 		}
 		
 		// TODO: Publish to NATS when natsClient is implemented

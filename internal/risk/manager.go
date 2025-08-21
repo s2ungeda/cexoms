@@ -52,6 +52,9 @@ type RiskMetrics struct {
 	UpdatedAt       time.Time
 }
 
+// RiskEngine is an alias for RiskManager for backward compatibility
+type RiskEngine = RiskManager
+
 // RiskManager implements the Manager interface
 type RiskManager struct {
 	mu sync.RWMutex
@@ -232,7 +235,7 @@ func (rm *RiskManager) UpdatePosition(account string, position *types.Position) 
 		rm.positions[account] = make(map[string]*types.Position)
 	}
 	
-	if position.Quantity == 0 {
+	if position.Amount.IsZero() {
 		// Position closed
 		delete(rm.positions[account], position.Symbol)
 	} else {
@@ -272,9 +275,7 @@ func (rm *RiskManager) calculateTotalExposure() decimal.Decimal {
 	
 	for _, positions := range rm.positions {
 		for _, pos := range positions {
-			quantity := decimal.NewFromFloat(pos.Quantity)
-			markPrice := decimal.NewFromFloat(pos.MarkPrice)
-			exposure := quantity.Mul(markPrice)
+			exposure := pos.Amount.Mul(pos.MarkPrice)
 			total = total.Add(exposure)
 		}
 	}
@@ -292,9 +293,7 @@ func (rm *RiskManager) calculateAccountMetrics(account string) *RiskMetrics {
 	// Calculate exposure and position count
 	if positions, exists := rm.positions[account]; exists {
 		for _, pos := range positions {
-			quantity := decimal.NewFromFloat(pos.Quantity)
-			markPrice := decimal.NewFromFloat(pos.MarkPrice)
-			exposure := quantity.Mul(markPrice)
+			exposure := pos.Amount.Mul(pos.MarkPrice)
 			metrics.TotalExposure = metrics.TotalExposure.Add(exposure)
 			metrics.OpenPositions++
 		}
@@ -364,4 +363,24 @@ func (rm *RiskManager) calculateVaR(pnlHistory []decimal.Decimal, confidence flo
 	var95 := mean.Sub(stdDev.Mul(decimal.NewFromFloat(1.645)))
 	
 	return var95
+}
+
+// GetMetrics returns risk metrics
+func (rm *RiskManager) GetMetrics() map[string]interface{} {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	
+	totalPositions := 0
+	for _, positions := range rm.positions {
+		totalPositions += len(positions)
+	}
+	
+	return map[string]interface{}{
+		"max_drawdown": rm.maxDrawdown,
+		"max_exposure": rm.maxExposure.String(),
+		"current_exposure": rm.calculateTotalExposure().String(),
+		"total_positions": totalPositions,
+		"auto_stop_loss": rm.autoStopLoss,
+		"stop_loss_percent": rm.autoStopLossPercent,
+	}
 }

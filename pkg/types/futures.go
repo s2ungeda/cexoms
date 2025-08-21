@@ -19,6 +19,30 @@ const (
 	PositionModeHedge  = "HEDGE"
 )
 
+// MarginMode represents margin mode
+type MarginMode string
+
+const (
+	MarginModeCrossed  MarginMode = "CROSSED"
+	MarginModeIsolated MarginMode = "ISOLATED"
+)
+
+// Position represents a unified position (spot/futures)
+type Position struct {
+	Symbol           string          `json:"symbol"`
+	Side             PositionSide    `json:"side"`
+	Amount           decimal.Decimal `json:"amount"`
+	EntryPrice       decimal.Decimal `json:"entry_price"`
+	MarkPrice        decimal.Decimal `json:"mark_price"`
+	UnrealizedPnL    decimal.Decimal `json:"unrealized_pnl"`
+	RealizedPnL      decimal.Decimal `json:"realized_pnl"`
+	Leverage         int             `json:"leverage,omitempty"`
+	MarginMode       MarginMode      `json:"margin_mode,omitempty"`
+	IsolatedMargin   decimal.Decimal `json:"isolated_margin,omitempty"`
+	LiquidationPrice decimal.Decimal `json:"liquidation_price,omitempty"`
+	UpdateTime       time.Time       `json:"update_time"`
+}
+
 // FuturesPosition represents a futures position
 type FuturesPosition struct {
 	Symbol                string          `json:"symbol"`
@@ -48,9 +72,16 @@ type FuturesAccount struct {
 	TotalMargin           decimal.Decimal    `json:"total_margin"`
 	TotalUnrealizedPnL    decimal.Decimal    `json:"total_unrealized_pnl"`
 	TotalMaintenanceMargin decimal.Decimal   `json:"total_maintenance_margin"`
-	Assets                []FuturesAsset     `json:"assets"`
-	Positions             []FuturesPosition  `json:"positions"`
+	Positions             []*FuturesPosition `json:"positions"`
 	UpdateTime            time.Time          `json:"update_time"`
+}
+
+// FundingRate represents funding rate information
+type FundingRate struct {
+	Symbol      string          `json:"symbol"`
+	Rate        decimal.Decimal `json:"rate"`
+	Time        time.Time       `json:"time"`
+	NextFunding time.Time       `json:"next_funding"`
 }
 
 // FuturesAsset represents an asset in futures account
@@ -80,13 +111,6 @@ type MarginChangeRequest struct {
 	Type         int             `json:"type"` // 1: Add, 2: Reduce
 }
 
-// FundingRate represents funding rate information
-type FundingRate struct {
-	Symbol       string          `json:"symbol"`
-	FundingRate  decimal.Decimal `json:"funding_rate"`
-	FundingTime  time.Time       `json:"funding_time"`
-	MarkPrice    decimal.Decimal `json:"mark_price"`
-}
 
 // FuturesKline represents futures candlestick data
 type FuturesKline struct {

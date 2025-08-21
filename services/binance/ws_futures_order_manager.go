@@ -780,3 +780,213 @@ func (m *BinanceFuturesWSOrderManager) ChangePositionMode(ctx context.Context, d
 
 	return nil
 }
+
+// Advanced Order Types
+
+// StopOrder represents a stop-loss or take-profit order
+type StopOrder struct {
+	Symbol        string
+	Side          types.OrderSide
+	StopPrice     decimal.Decimal
+	Price         decimal.Decimal // limit price when triggered
+	Quantity      decimal.Decimal
+	WorkingType   string // MARK_PRICE, CONTRACT_PRICE
+	PositionSide  types.PositionSide
+	ReduceOnly    bool
+	ClosePosition bool
+}
+
+// CreateStopOrder creates a stop-loss or take-profit order
+func (m *BinanceFuturesWSOrderManager) CreateStopOrder(ctx context.Context, order *StopOrder) (*types.OrderResponse, error) {
+	if !m.connected.Load() {
+		return nil, ErrNotConnected
+	}
+
+	requestID := m.generateRequestID()
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+
+	// Build parameters
+	params := map[string]string{
+		"symbol":       order.Symbol,
+		"side":         string(order.Side),
+		"type":         "STOP", // or "STOP_MARKET", "TAKE_PROFIT", "TAKE_PROFIT_MARKET"
+		"quantity":     order.Quantity.String(),
+		"stopPrice":    order.StopPrice.String(),
+		"workingType":  order.WorkingType,
+		"timestamp":    timestamp,
+		"apiKey":       m.config.APIKey,
+	}
+
+	// Add optional parameters
+	if !order.Price.IsZero() {
+		params["type"] = "STOP" // STOP limit order
+		params["price"] = order.Price.String()
+		params["timeInForce"] = "GTC"
+	} else {
+		params["type"] = "STOP_MARKET" // STOP market order
+	}
+
+	if order.PositionSide != "" {
+		params["positionSide"] = string(order.PositionSide)
+	}
+
+	if order.ReduceOnly {
+		params["reduceOnly"] = "true"
+	}
+
+	if order.ClosePosition {
+		params["closePosition"] = "true"
+		delete(params, "quantity") // quantity not needed for close position
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	result, err := m.sendRequest(ctx, "order.create", params, requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse response
+	var resp types.OrderResponse
+	if err := json.Unmarshal(result, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse order response: %v", err)
+	}
+
+	return &resp, nil
+}
+
+// CreateStopLossOrder creates a stop-loss order for an existing position
+func (m *BinanceFuturesWSOrderManager) CreateStopLossOrder(ctx context.Context, symbol string, side types.OrderSide, stopPrice decimal.Decimal, quantity decimal.Decimal) (*types.OrderResponse, error) {
+	stopOrder := &StopOrder{
+		Symbol:      symbol,
+		Side:        side,
+		StopPrice:   stopPrice,
+		Quantity:    quantity,
+		WorkingType: "MARK_PRICE",
+		ReduceOnly:  true,
+	}
+
+	return m.CreateStopOrder(ctx, stopOrder)
+}
+
+// CreateTakeProfitOrder creates a take-profit order for an existing position
+func (m *BinanceFuturesWSOrderManager) CreateTakeProfitOrder(ctx context.Context, symbol string, side types.OrderSide, stopPrice decimal.Decimal, quantity decimal.Decimal) (*types.OrderResponse, error) {
+	// For take profit, we need to adjust the order type
+	requestID := m.generateRequestID()
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+
+	params := map[string]string{
+		"symbol":       symbol,
+		"side":         string(side),
+		"type":         "TAKE_PROFIT_MARKET",
+		"quantity":     quantity.String(),
+		"stopPrice":    stopPrice.String(),
+		"workingType":  "MARK_PRICE",
+		"reduceOnly":   "true",
+		"timestamp":    timestamp,
+		"apiKey":       m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	result, err := m.sendRequest(ctx, "order.create", params, requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse response
+	var resp types.OrderResponse
+	if err := json.Unmarshal(result, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse order response: %v", err)
+	}
+
+	return &resp, nil
+}
+
+// Leverage and Margin Type Methods
+
+// ChangeInitialLeverage changes the initial leverage for a symbol
+func (m *BinanceFuturesWSOrderManager) ChangeInitialLeverage(ctx context.Context, symbol string, leverage int) error {
+	if !m.connected.Load() {
+		return ErrNotConnected
+	}
+
+	requestID := m.generateRequestID()
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+
+	params := map[string]string{
+		"symbol":    symbol,
+		"leverage":  strconv.Itoa(leverage),
+		"timestamp": timestamp,
+		"apiKey":    m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	_, err := m.sendRequest(ctx, "leverage.change", params, requestID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Leverage changed to %dx for %s\n", leverage, symbol)
+	return nil
+}
+
+// ChangeMarginType changes the margin type for a symbol
+func (m *BinanceFuturesWSOrderManager) ChangeMarginType(ctx context.Context, symbol string, marginType string) error {
+	if !m.connected.Load() {
+		return ErrNotConnected
+	}
+
+	// Validate margin type
+	if marginType != "ISOLATED" && marginType != "CROSSED" {
+		return fmt.Errorf("invalid margin type: %s (must be ISOLATED or CROSSED)", marginType)
+	}
+
+	requestID := m.generateRequestID()
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+
+	params := map[string]string{
+		"symbol":     symbol,
+		"marginType": marginType,
+		"timestamp":  timestamp,
+		"apiKey":     m.config.APIKey,
+	}
+
+	// Generate signature
+	signature := m.generateSignature(params)
+	params["signature"] = signature
+
+	// Send request
+	_, err := m.sendRequest(ctx, "marginType.change", params, requestID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Margin type changed to %s for %s\n", marginType, symbol)
+	return nil
+}
+
+// GetMaxLeverage gets the maximum leverage allowed for a symbol
+func (m *BinanceFuturesWSOrderManager) GetMaxLeverage(ctx context.Context, symbol string) (int, error) {
+	// Note: This information is typically obtained from exchange info
+	// WebSocket API doesn't have a specific method for this
+	// You would need to maintain a cache of exchange info or use REST API
+	
+	// For now, return common max leverage values
+	// BTC/ETH: 125x, others: 75x or 50x
+	if symbol == "BTCUSDT" || symbol == "ETHUSDT" {
+		return 125, nil
+	}
+	
+	return 75, nil // Default for most altcoins
+}

@@ -290,3 +290,40 @@ func (m *RiskLimitManager) getLimitStatusLevel(usage float64) string {
 		return "safe"
 	}
 }
+
+// Action constants for limits
+const (
+	ActionReject = "REJECT"
+	ActionWarn   = "WARN"
+	ActionAlert  = "ALERT"
+)
+
+// NewRiskLimitsManager creates a simple risk limits manager for tests
+func NewRiskLimitsManager() *SimpleLimitsManager {
+	return &SimpleLimitsManager{
+		limits: make(map[string]SimpleLimit),
+	}
+}
+
+// SimpleLimitsManager is a simple implementation for tests
+type SimpleLimitsManager struct {
+	mu     sync.RWMutex
+	limits map[string]SimpleLimit
+}
+
+// SimpleLimit is a simple limit for tests
+type SimpleLimit struct {
+	Value  decimal.Decimal
+	Action string
+}
+
+// SetLimit sets a simple limit
+func (m *SimpleLimitsManager) SetLimit(name string, value decimal.Decimal, action string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	m.limits[name] = SimpleLimit{
+		Value:  value,
+		Action: action,
+	}
+}

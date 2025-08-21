@@ -1,7 +1,6 @@
 package account
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -451,7 +450,7 @@ func (m *Manager) Transfer(transfer *types.AccountTransfer) error {
 		if t, exists := m.transfers[transfer.ID]; exists {
 			t.Status = "completed"
 			now := time.Now()
-			t.CompletedAt = &now
+			t.CompletedAt = now
 		}
 	}()
 	

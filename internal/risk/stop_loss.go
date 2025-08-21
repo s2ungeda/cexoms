@@ -79,7 +79,7 @@ func (m *StopLossManager) CreateStopLoss(account string, position *types.Positio
 		config = &m.defaultConfig
 	}
 	
-	entryPrice := decimal.NewFromFloat(position.EntryPrice)
+	entryPrice := position.EntryPrice
 	
 	// Calculate initial stop price based on type
 	stopPrice, err := m.calculateStopPrice(entryPrice, position.Side, config)

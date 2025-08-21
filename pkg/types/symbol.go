@@ -20,17 +20,6 @@ type StandardSymbol struct {
 	Market     MarketType
 }
 
-type MarketType string
-
-const (
-	MarketSpot    MarketType = "SPOT"
-	MarketFutures MarketType = "FUTURES"
-	MarketMargin  MarketType = "MARGIN"
-	
-	// Aliases for compatibility
-	MarketTypeSpot    = MarketSpot
-	MarketTypeFutures = MarketFutures
-)
 
 // Parse parses a standard symbol string
 func (s *StandardSymbol) Parse(symbol string) error {
@@ -140,11 +129,11 @@ func (n *UpbitSymbolNormalizer) Denormalize(standardSymbol string) string {
 // GetNormalizer returns the appropriate normalizer for an exchange
 func GetNormalizer(exchangeType ExchangeType) SymbolNormalizer {
 	switch exchangeType {
-	case ExchangeBinanceSpot, ExchangeBinanceFutures:
+	case ExchangeBinance:
 		return &BinanceSymbolNormalizer{}
-	case ExchangeBybitSpot, ExchangeBybitFutures:
+	case ExchangeBybit:
 		return &BybitSymbolNormalizer{}
-	case ExchangeOKXSpot, ExchangeOKXFutures:
+	case ExchangeOKX:
 		return &OKXSymbolNormalizer{}
 	case ExchangeUpbit:
 		return &UpbitSymbolNormalizer{}

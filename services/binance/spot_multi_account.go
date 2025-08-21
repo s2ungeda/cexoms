@@ -46,11 +46,6 @@ type WebSocketManager struct {
 	userDataStream   *WebSocketStream
 }
 
-// WebSocketStream holds WebSocket stream control channels
-type WebSocketStream struct {
-	Done chan struct{}
-	Stop chan struct{}
-}
 
 // RateLimiter tracks rate limit usage
 type RateLimiter struct {
@@ -346,7 +341,7 @@ func (b *BinanceSpotMultiAccount) CreateOrder(ctx context.Context, order *types.
 }
 
 // CancelOrder cancels an order
-func (b *BinanceSpotMultiAccount) CancelOrder(ctx context.Context, orderID string) error {
+func (b *BinanceSpotMultiAccount) CancelOrder(ctx context.Context, symbol string, orderID string) error {
 	b.mu.RLock()
 	client, exists := b.clients[b.currentAccount]
 	accountID := b.currentAccount
@@ -361,9 +356,7 @@ func (b *BinanceSpotMultiAccount) CancelOrder(ctx context.Context, orderID strin
 		return err
 	}
 	
-	// Parse order info (assuming format: symbol:orderID)
-	// In production, maintain order mapping
-	symbol := "BTCUSDT" // TODO: Get from order tracking
+	// Use symbol parameter directly
 	
 	// Convert orderID string to int64
 	orderIDInt, err := strconv.ParseInt(orderID, 10, 64)
@@ -386,8 +379,60 @@ func (b *BinanceSpotMultiAccount) CancelOrder(ctx context.Context, orderID strin
 	return nil
 }
 
+// GetAccountInfo returns account information
+func (b *BinanceSpotMultiAccount) GetAccountInfo(ctx context.Context) (*types.AccountInfo, error) {
+	b.mu.RLock()
+	client, exists := b.clients[b.currentAccount]
+	accountID := b.currentAccount
+	b.mu.RUnlock()
+	
+	if !exists {
+		return nil, fmt.Errorf("no client for current account")
+	}
+	
+	account, err := client.NewGetAccountService().Do(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account info: %w", err)
+	}
+	
+	balances := make([]types.Balance, 0)
+	for _, bal := range account.Balances {
+		free, _ := decimal.NewFromString(bal.Free)
+		locked, _ := decimal.NewFromString(bal.Locked)
+		
+		if free.IsZero() && locked.IsZero() {
+			continue
+		}
+		
+		balances = append(balances, types.Balance{
+			Asset:  bal.Asset,
+			Free:   free,
+			Locked: locked,
+			Total:  free.Add(locked),
+		})
+	}
+	
+	return &types.AccountInfo{
+		Exchange:    types.ExchangeBinance,
+		AccountID:   accountID,
+		AccountType: "spot",
+		Balances:    balances,
+		UpdateTime:  time.Now(),
+	}, nil
+}
+
+// GetBalances returns all non-zero balances
+func (b *BinanceSpotMultiAccount) GetBalances(ctx context.Context) ([]types.Balance, error) {
+	accountInfo, err := b.GetAccountInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	return accountInfo.Balances, nil
+}
+
 // GetOrder retrieves order details
-func (b *BinanceSpotMultiAccount) GetOrder(ctx context.Context, orderID string) (*types.Order, error) {
+func (b *BinanceSpotMultiAccount) GetOrder(ctx context.Context, symbol string, orderID string) (*types.Order, error) {
 	b.mu.RLock()
 	_, exists := b.clients[b.currentAccount] // client will be used when implemented
 	accountID := b.currentAccount
@@ -488,12 +533,8 @@ func (b *BinanceSpotMultiAccount) GetBalanceForAccount(ctx context.Context, acco
 	// Update rate limit
 	b.updateRateLimit(accountID, 10)
 	
-	// Build balance
-	balance := &types.Balance{
-		Exchange: "binance",
-		Market:   "spot",
-		Assets:   make(map[string]types.AssetBalance),
-	}
+	// Find requested asset or default to USDT
+	var balance *types.Balance
 	
 	// Find specific asset or add all assets
 	totalUSDT := decimal.Zero
@@ -507,12 +548,13 @@ func (b *BinanceSpotMultiAccount) GetBalanceForAccount(ctx context.Context, acco
 			continue
 		}
 		
-		// Add to balance map
-		if asset == "" || bal.Asset == asset {
-			balance.Assets[bal.Asset] = types.AssetBalance{
+		// Check if this is the requested asset or USDT
+		if (asset != "" && bal.Asset == asset) || (asset == "" && bal.Asset == "USDT") {
+			balance = &types.Balance{
 				Asset:  bal.Asset,
-				Free:   bal.Free,
-				Locked: bal.Locked,
+				Free:   free,
+				Locked: locked,
+				Total:  free.Add(locked),
 			}
 			
 			if asset != "" {
@@ -535,6 +577,16 @@ func (b *BinanceSpotMultiAccount) GetBalanceForAccount(ctx context.Context, acco
 	}
 	
 	b.accountManager.UpdateBalance(accountID, accountBalance)
+	
+	// Return empty balance if not found
+	if balance == nil {
+		balance = &types.Balance{
+			Asset:  "USDT",
+			Free:   decimal.Zero,
+			Locked: decimal.Zero,
+			Total:  decimal.Zero,
+		}
+	}
 	
 	return balance, nil
 }
@@ -675,18 +727,12 @@ func (b *BinanceSpotMultiAccount) GetWebSocketOrderManager() types.WebSocketOrde
 // GetWebSocketInfo returns WebSocket capabilities info
 func (b *BinanceSpotMultiAccount) GetWebSocketInfo() types.ExchangeWebSocketInfo {
 	return types.ExchangeWebSocketInfo{
-		Supported: true,
-		OrderSupport: types.WebSocketOrderSupport{
-			CreateOrder:  true,
-			CancelOrder:  true,
-			ModifyOrder:  false, // Binance doesn't support order modification
-			OrderStatus:  true,
-			OpenOrders:   true,
-			OrderUpdates: true,
-		},
-		BaseURL:       "wss://ws-api.binance.com:443/ws-api/v3",
-		TestnetURL:    "wss://testnet.binance.vision/ws-api/v3",
-		Documentation: "https://binance-docs.github.io/apidocs/websocket_api/en/",
+		SupportsOrderManagement: true,
+		SupportsAccountUpdates:  true,
+		SupportsMarketData:      true,
+		SupportsPositionUpdates: false, // Spot doesn't have positions
+		MaxConnections:          300,
+		PingInterval:            3 * time.Minute,
 	}
 }
 
@@ -770,10 +816,76 @@ func (b *BinanceSpotMultiAccount) convertOrderBook(event *binance.WsDepthEvent) 
 	}
 	
 	return &types.OrderBook{
-		Symbol:       event.Symbol,
-		Bids:         bids,
-		Asks:         asks,
-		LastUpdateID: event.LastUpdateID,
-		UpdatedAt:    time.Now(),
+		Symbol:     event.Symbol,
+		Bids:       bids,
+		Asks:       asks,
+		UpdateTime: time.Now(),
+		UpdatedAt:  time.Now(),
 	}
+}
+
+// GetKlines retrieves kline/candlestick data
+func (ma *BinanceSpotMultiAccount) GetKlines(ctx context.Context, symbol string, interval types.KlineInterval, limit int) ([]*types.Kline, error) {
+	return []*types.Kline{}, nil
+}
+
+// GetMarketData retrieves current market data
+func (ma *BinanceSpotMultiAccount) GetMarketData(ctx context.Context, symbols []string) (map[string]*types.MarketData, error) {
+	return map[string]*types.MarketData{}, nil
+}
+
+// GetOrderBook retrieves order book data
+func (ma *BinanceSpotMultiAccount) GetOrderBook(ctx context.Context, symbol string, depth int) (*types.OrderBook, error) {
+	return &types.OrderBook{}, nil
+}
+
+// GetOrderHistory retrieves historical orders
+func (ma *BinanceSpotMultiAccount) GetOrderHistory(ctx context.Context, symbol string, limit int) ([]*types.Order, error) {
+	return []*types.Order{}, nil
+}
+
+// GetSymbolInfo retrieves symbol trading information
+func (ma *BinanceSpotMultiAccount) GetSymbolInfo(ctx context.Context, symbol string) (*types.SymbolInfo, error) {
+	return &types.SymbolInfo{}, nil
+}
+
+// GetTrades retrieves recent trades
+func (ma *BinanceSpotMultiAccount) GetTrades(ctx context.Context, symbol string, limit int) ([]*types.Trade, error) {
+	return []*types.Trade{}, nil
+}
+
+// SubscribeTicker subscribes to ticker updates
+func (ma *BinanceSpotMultiAccount) SubscribeTicker(symbol string, callback types.TickerCallback) error {
+	return nil
+}
+
+// SubscribeTrades subscribes to trade updates
+func (ma *BinanceSpotMultiAccount) SubscribeTrades(symbol string, callback types.TradeCallback) error {
+	return nil
+}
+
+// UnsubscribeAll unsubscribes from all streams
+func (ma *BinanceSpotMultiAccount) UnsubscribeAll() error {
+	return nil
+}
+
+// GetType returns the exchange type
+func (b *BinanceSpotMultiAccount) GetType() types.ExchangeType {
+	return types.ExchangeBinance
+}
+
+// GetMarketType returns the market type
+func (b *BinanceSpotMultiAccount) GetMarketType() types.MarketType {
+	return types.MarketTypeSpot
+}
+
+// Initialize initializes the exchange connector
+func (b *BinanceSpotMultiAccount) Initialize(ctx context.Context) error {
+	// Already initialized in constructor
+	return nil
+}
+
+// PlaceOrder places a new order (alias for CreateOrder)
+func (b *BinanceSpotMultiAccount) PlaceOrder(ctx context.Context, order *types.Order) (*types.Order, error) {
+	return b.CreateOrder(ctx, order)
 }

@@ -120,7 +120,7 @@ func (m *RiskMonitor) UpdatePosition(account string, position *types.Position) {
 		m.positions[account] = make(map[string]*types.Position)
 	}
 	
-	if position.Quantity == 0 {
+	if position.Amount.IsZero() {
 		delete(m.positions[account], position.Symbol)
 	} else {
 		m.positions[account][position.Symbol] = position
@@ -376,15 +376,15 @@ func (m *RiskMonitor) checkMarginLevels(account string) {
 				Severity:  "warning",
 				Account:   account,
 				Symbol:    symbol,
-				Message:   fmt.Sprintf("High leverage detected: %dx", int(position.Leverage)),
-				Value:     decimal.NewFromFloat(position.Leverage),
+				Message:   fmt.Sprintf("High leverage detected: %dx", position.Leverage),
+				Value:     decimal.NewFromInt(int64(position.Leverage)),
 				Threshold: decimal.NewFromInt(10),
 				Timestamp: time.Now(),
 			})
 		}
 		
 		// Check unrealized PnL
-		unrealizedPnL := decimal.NewFromFloat(position.UnrealizedPNL)
+		unrealizedPnL := position.UnrealizedPnL
 		if unrealizedPnL.LessThan(decimal.NewFromFloat(-1000)) {
 			m.createAlert(&Alert{
 				Type:      "LARGE_UNREALIZED_LOSS",

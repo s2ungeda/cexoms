@@ -138,8 +138,8 @@ func testPositionManagement(client *futures.BinanceFutures) {
 		fmt.Printf("✗ Failed to get funding rate: %v\n", err)
 	} else {
 		fmt.Printf("✓ Funding rate for %s: %s%%\n", 
-			symbol, funding.FundingRate.Mul(decimal.NewFromInt(100)))
-		fmt.Printf("  Next funding time: %s\n", funding.FundingTime.Format("15:04:05"))
+			symbol, funding.Rate.Mul(decimal.NewFromInt(100)))
+		fmt.Printf("  Next funding time: %s\n", funding.NextFunding.Format("15:04:05"))
 	}
 	
 	// Get position risk

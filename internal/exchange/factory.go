@@ -26,6 +26,7 @@ type Config struct {
 type Factory struct {
 	configs        map[types.ExchangeType]*Config
 	accountManager types.AccountManager
+	exchanges      map[types.ExchangeType]types.Exchange
 }
 
 // NewFactory creates a new exchange factory
@@ -33,6 +34,7 @@ func NewFactory(accountManager types.AccountManager) *Factory {
 	return &Factory{
 		configs:        make(map[types.ExchangeType]*Config),
 		accountManager: accountManager,
+		exchanges:      make(map[types.ExchangeType]types.Exchange),
 	}
 }
 
@@ -132,4 +134,43 @@ func getExchangeName(exchangeType types.ExchangeType) string {
 	default:
 		return ""
 	}
+}
+
+// GetExchange retrieves an existing exchange or creates a new one
+func (f *Factory) GetExchange(exchangeTypeName string) (types.Exchange, error) {
+	// Convert string to ExchangeType
+	var exchangeType types.ExchangeType
+	switch exchangeTypeName {
+	case "binance-spot":
+		exchangeType = types.ExchangeBinanceSpot
+	case "binance-futures":
+		exchangeType = types.ExchangeBinanceFutures
+	case "bybit-spot":
+		exchangeType = types.ExchangeBybitSpot
+	case "bybit-futures":
+		exchangeType = types.ExchangeBybitFutures
+	case "okx-spot":
+		exchangeType = types.ExchangeOKXSpot
+	case "okx-futures":
+		exchangeType = types.ExchangeOKXFutures
+	case "upbit":
+		exchangeType = types.ExchangeUpbit
+	default:
+		return nil, fmt.Errorf("unknown exchange type: %s", exchangeTypeName)
+	}
+	
+	// Check if exchange already exists
+	if exchange, exists := f.exchanges[exchangeType]; exists {
+		return exchange, nil
+	}
+	
+	// Create new exchange
+	exchange, err := f.CreateExchange(exchangeType)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Cache it
+	f.exchanges[exchangeType] = exchange
+	return exchange, nil
 }

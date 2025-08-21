@@ -343,7 +343,7 @@ func (ae *ArbitrageExecutor) doExecute(ctx context.Context, execution *Execution
 	// Execute buy order
 	go func() {
 		defer wg.Done()
-		executedBuy, buyErr = buyExchange.CreateOrder(ctx, buyOrder)
+		executedBuy, buyErr = buyExchange.PlaceOrder(ctx, buyOrder)
 		if buyErr == nil {
 			execution.BuyOrder = executedBuy
 			execution.Status = ExecutionBuyPlaced
@@ -353,7 +353,7 @@ func (ae *ArbitrageExecutor) doExecute(ctx context.Context, execution *Execution
 	// Execute sell order
 	go func() {
 		defer wg.Done()
-		executedSell, sellErr = sellExchange.CreateOrder(ctx, sellOrder)
+		executedSell, sellErr = sellExchange.PlaceOrder(ctx, sellOrder)
 		if sellErr == nil {
 			execution.SellOrder = executedSell
 			execution.Status = ExecutionSellPlaced
@@ -376,7 +376,7 @@ func (ae *ArbitrageExecutor) doExecute(ctx context.Context, execution *Execution
 	
 	// Calculate actual execution
 	if executedBuy != nil && executedSell != nil {
-		result.Quantity = decimal.Min(executedBuy.FilledQuantity, executedSell.FilledQuantity)
+		result.Quantity = decimal.Min(executedBuy.ExecutedQty, executedSell.ExecutedQty)
 		result.BuyPrice = executedBuy.AvgPrice
 		result.SellPrice = executedSell.AvgPrice
 		
@@ -404,9 +404,9 @@ func (ae *ArbitrageExecutor) rollbackExecution(ctx context.Context, execution *E
 	
 	// Cancel or reverse executed orders
 	if buyOrder != nil && buyOrder.Status != types.OrderStatusCanceled {
-		if buyOrder.FilledQuantity.IsZero() {
+		if buyOrder.ExecutedQty.IsZero() {
 			// Cancel unfilled buy order
-			buyExchange.CancelOrder(rollbackCtx, buyOrder.ExchangeOrderID)
+			buyExchange.CancelOrder(rollbackCtx, buyOrder.Symbol, buyOrder.ExchangeOrderID)
 		} else {
 			// Create opposite sell order to flatten position
 			reverseOrder := &types.Order{
@@ -414,16 +414,16 @@ func (ae *ArbitrageExecutor) rollbackExecution(ctx context.Context, execution *E
 				Symbol:        buyOrder.Symbol,
 				Side:          types.OrderSideSell,
 				Type:          types.OrderTypeMarket,
-				Quantity:      buyOrder.FilledQuantity,
+				Quantity:      buyOrder.ExecutedQty,
 			}
-			buyExchange.CreateOrder(rollbackCtx, reverseOrder)
+			buyExchange.PlaceOrder(rollbackCtx, reverseOrder)
 		}
 	}
 	
 	if sellOrder != nil && sellOrder.Status != types.OrderStatusCanceled {
-		if sellOrder.FilledQuantity.IsZero() {
+		if sellOrder.ExecutedQty.IsZero() {
 			// Cancel unfilled sell order
-			sellExchange.CancelOrder(rollbackCtx, sellOrder.ExchangeOrderID)
+			sellExchange.CancelOrder(rollbackCtx, sellOrder.Symbol, sellOrder.ExchangeOrderID)
 		} else {
 			// Create opposite buy order to flatten position
 			reverseOrder := &types.Order{
@@ -433,7 +433,7 @@ func (ae *ArbitrageExecutor) rollbackExecution(ctx context.Context, execution *E
 				Type:          types.OrderTypeMarket,
 				Quantity:      sellOrder.FilledQuantity,
 			}
-			sellExchange.CreateOrder(rollbackCtx, reverseOrder)
+			sellExchange.PlaceOrder(rollbackCtx, reverseOrder)
 		}
 	}
 	
@@ -488,7 +488,7 @@ func (ae *ArbitrageExecutor) checkActiveExecutions() {
 	defer ae.mu.RUnlock()
 	
 	now := time.Now()
-	for id, execution := range ae.activeExecutions {
+	for _, execution := range ae.activeExecutions {
 		// Check for stuck executions
 		if now.Sub(execution.StartTime) > ae.config.PartialFillTimeout*2 {
 			execution.Status = ExecutionFailed

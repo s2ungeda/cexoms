@@ -187,9 +187,9 @@ func (bf *BinanceFutures) GetFundingRate(symbol string) (*types.FundingRate, err
 	rate := rates[0]
 	return &types.FundingRate{
 		Symbol:      rate.Symbol,
-		FundingRate: parseDecimal(rate.FundingRate),
-		FundingTime: parseTimestamp(rate.FundingTime),
-		MarkPrice:   parseDecimal(rate.MarkPrice),
+		Rate:        parseDecimal(rate.FundingRate),
+		Time:        parseTimestamp(rate.FundingTime),
+		NextFunding: time.Now().Add(8 * time.Hour), // Binance funding every 8 hours
 	}, nil
 }
 

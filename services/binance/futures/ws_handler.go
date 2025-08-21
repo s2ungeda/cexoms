@@ -346,12 +346,66 @@ func (bf *BinanceFutures) handleOrderUpdate(event *futures.WsUserDataEvent) {
 	fmt.Printf("Order update received: %+v\n", event)
 }
 
-// handleAccountUpdate handles account update events
+// handleAccountUpdate handles account update events including position updates
 func (bf *BinanceFutures) handleAccountUpdate(event *futures.WsUserDataEvent) {
 	// Extract account data from event and update cache
 	// Invalidate account cache to force refresh
 	bf.cache.Delete("futures_account")
-	fmt.Printf("Account update received: %+v\n", event)
+	
+	// Process position updates
+	if event.AccountUpdate != nil {
+		for _, position := range event.AccountUpdate.Positions {
+			// Only process positions with non-zero amount
+			posAmt, _ := parseDecimal(position.PositionAmount).Float64()
+			if posAmt == 0 {
+				continue
+			}
+			
+			// Create position object
+			pos := &types.Position{
+				Symbol:        position.Symbol,
+				Side:          determinePositionSide(posAmt),
+				Amount:        parseDecimal(position.PositionAmount).Abs(),
+				EntryPrice:    parseDecimal(position.EntryPrice),
+				MarkPrice:     parseDecimal(position.MarkPrice),
+				UnrealizedPnL: parseDecimal(position.UnrealizedPnL),
+				RealizedPnL:   parseDecimal(position.RealizedPnL),
+				Leverage:      0, // Not provided in event
+				MarginType:    position.MarginType,
+				UpdatedAt:     time.Now(),
+			}
+			
+			// Cache position
+			cacheKey := fmt.Sprintf("futures:position:%s", position.Symbol)
+			bf.cache.Set(cacheKey, pos, time.Hour)
+			
+			// Notify position update callbacks
+			if bf.positionUpdateCallback != nil {
+				bf.positionUpdateCallback(pos)
+			}
+		}
+		
+		// Update account balance
+		for _, balance := range event.AccountUpdate.Balances {
+			if balance.Asset == "USDT" {
+				accountBalance := map[string]interface{}{
+					"balance": parseDecimal(balance.Balance),
+					"cross_wallet_balance": parseDecimal(balance.CrossWalletBalance),
+				}
+				bf.cache.Set("futures:balance:USDT", accountBalance, time.Hour)
+			}
+		}
+	}
+	
+	fmt.Printf("Account update processed: %d positions updated\n", len(event.AccountUpdate.Positions))
+}
+
+// determinePositionSide determines position side from amount
+func determinePositionSide(amount float64) types.Side {
+	if amount > 0 {
+		return types.Side("LONG")
+	}
+	return types.Side("SHORT")
 }
 
 // handleMarginCall handles margin call events

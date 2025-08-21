@@ -165,8 +165,8 @@ type StrategyMetrics struct {
 	TotalSlippage   float64
 }
 
-// BacktestEngine interface defines the backtesting engine
-type BacktestEngine interface {
+// IBacktestEngine interface defines the backtesting engine
+type IBacktestEngine interface {
 	// Initialize the engine with config
 	Initialize(config BacktestConfig) error
 	

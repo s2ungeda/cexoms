@@ -21,6 +21,9 @@ type BinanceFutures struct {
 	apiKey       string
 	apiSecret    string
 	testnet      bool
+	
+	// Callbacks
+	positionUpdateCallback func(position *types.Position)
 }
 
 func NewBinanceFutures(apiKey, apiSecret string, testnet bool) (*BinanceFutures, error) {
@@ -124,24 +127,11 @@ func (bf *BinanceFutures) GetAccount() (*types.FuturesAccount, error) {
 		TotalMargin:            parseDecimal(account.TotalMarginBalance),
 		TotalUnrealizedPnL:     parseDecimal(account.TotalUnrealizedProfit),
 		TotalMaintenanceMargin: parseDecimal(account.TotalMaintMargin),
-		Assets:                 make([]types.FuturesAsset, 0, len(account.Assets)),
-		Positions:              make([]types.FuturesPosition, 0, len(account.Positions)),
+		Positions:              make([]*types.FuturesPosition, 0, len(account.Positions)),
 		UpdateTime:             time.Unix(account.UpdateTime/1000, 0),
 	}
 	
-	// Process assets
-	for _, asset := range account.Assets {
-		futuresAccount.Assets = append(futuresAccount.Assets, types.FuturesAsset{
-			Asset:             asset.Asset,
-			Balance:           parseDecimal(asset.WalletBalance),
-			CrossBalance:      parseDecimal(asset.CrossWalletBalance),
-			CrossUnPnL:        parseDecimal(asset.CrossUnPnl),
-			AvailableBalance:  parseDecimal(asset.AvailableBalance),
-			MaxWithdrawAmount: parseDecimal(asset.MaxWithdrawAmount),
-			MarginAvailable:   asset.MarginAvailable,
-			UpdateTime:        time.Unix(asset.UpdateTime/1000, 0),
-		})
-	}
+	// Process assets are removed as FuturesAccount no longer has Assets field
 	
 	// Process positions
 	for _, pos := range account.Positions {
@@ -150,7 +140,7 @@ func (bf *BinanceFutures) GetAccount() (*types.FuturesAccount, error) {
 		}
 		
 		leverage := int(parseDecimal(pos.Leverage).IntPart())
-		futuresAccount.Positions = append(futuresAccount.Positions, types.FuturesPosition{
+		futuresAccount.Positions = append(futuresAccount.Positions, &types.FuturesPosition{
 			Symbol:                 pos.Symbol,
 			PositionSide:           string(pos.PositionSide),
 			MarginType:             "ISOLATED", // Default, as it's not in account position
@@ -404,23 +394,15 @@ func (bf *BinanceFutures) GetBalance() (*types.Balance, error) {
 		return nil, err
 	}
 	
-	balance := &types.Balance{
-		Exchange: "binance",
-		Market:   "futures",
-		Assets:   make(map[string]types.AssetBalance),
-	}
-	
-	for _, asset := range account.Assets {
-		if asset.Balance.IsPositive() {
-			balance.Assets[asset.Asset] = types.AssetBalance{
-				Asset:  asset.Asset,
-				Free:   asset.AvailableBalance.String(),
-				Locked: asset.Balance.Sub(asset.AvailableBalance).String(),
-			}
-		}
-	}
-	
-	return balance, nil
+	// For now, return USDT balance as futures typically use USDT
+	// In a real implementation, this would aggregate all assets
+	return &types.Balance{
+		Asset:  "USDT",
+		Free:   account.AvailableBalance,
+		Locked: account.TotalMargin,
+		Total:  account.TotalBalance,
+		UnrealizedPnL: account.TotalUnrealizedPnL,
+	}, nil
 }
 
 // Helper function to parse decimal
@@ -442,4 +424,9 @@ func (bf *BinanceFutures) Close() error {
 		_ = ws
 	}
 	return nil
+}
+
+// SetPositionUpdateCallback sets the callback for position updates
+func (bf *BinanceFutures) SetPositionUpdateCallback(callback func(position *types.Position)) {
+	bf.positionUpdateCallback = callback
 }

@@ -45,14 +45,11 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *omsv1.OrderRequest)
 	order := s.protoToOrder(req)
 	
 	// Perform risk check
-	riskResult, err := s.riskEngine.CheckOrder(ctx, order, req.Exchange)
+	err = s.riskEngine.CheckOrderRisk(order)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "risk check failed: %v", err)
 	}
 	
-	if !riskResult.Passed {
-		return nil, status.Errorf(codes.FailedPrecondition, "risk check failed: %s", riskResult.RejectionReason)
-	}
 	
 	// Get exchange client
 	exchangeClient, err := s.exchangeFactory.GetExchange(req.Exchange)

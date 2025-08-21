@@ -230,7 +230,7 @@ func (bs *BinanceSpot) GetOpenOrders(ctx context.Context, symbol string) ([]*typ
 	return result, nil
 }
 
-func (bs *BinanceSpot) GetBalance(ctx context.Context) (*types.Balance, error) {
+func (bs *BinanceSpot) GetBalance(ctx context.Context, asset string) (*types.Balance, error) {
 	if !bs.rateLimiter.Allow("balance") {
 		return nil, fmt.Errorf("rate limit exceeded")
 	}
@@ -240,18 +240,46 @@ func (bs *BinanceSpot) GetBalance(ctx context.Context) (*types.Balance, error) {
 		return nil, err
 	}
 	
-	balance := &types.Balance{
-		Exchange: "binance",
-		Market:   "spot",
-		Assets:   make(map[string]types.AssetBalance),
-	}
+	// Find requested asset or USDT as default
+	var balance *types.Balance
 	
 	for _, b := range account.Balances {
-		if b.Free != "0" || b.Locked != "0" {
-			balance.Assets[b.Asset] = types.AssetBalance{
+		if b.Asset == "USDT" || (asset != "" && b.Asset == asset) {
+			free, _ := decimal.NewFromString(b.Free)
+			locked, _ := decimal.NewFromString(b.Locked)
+			
+			balance = &types.Balance{
 				Asset:  b.Asset,
-				Free:   b.Free,
-				Locked: b.Locked,
+				Free:   free,
+				Locked: locked,
+				Total:  free.Add(locked),
+			}
+			
+			if asset != "" && b.Asset == asset {
+				break // Found requested asset
+			}
+		}
+		
+		// Keep looking for USDT if not found yet
+		if balance == nil && b.Asset == "USDT" {
+			free, _ := decimal.NewFromString(b.Free)
+			locked, _ := decimal.NewFromString(b.Locked)
+			
+			balance = &types.Balance{
+				Asset:  b.Asset,
+				Free:   free,
+				Locked: locked,
+				Total:  free.Add(locked),
+			}
+		}
+		
+		// Create empty balance if nothing found
+		if balance == nil {
+			balance = &types.Balance{
+				Asset:  "USDT",
+				Free:   decimal.Zero,
+				Locked: decimal.Zero,
+				Total:  decimal.Zero,
 			}
 		}
 	}
@@ -317,15 +345,20 @@ func (bs *BinanceSpot) GetSymbolInfo(symbol string) (*types.SymbolInfo, error) {
 	
 	for _, s := range info.Symbols {
 		if s.Symbol == symbol {
+			minQty, _ := decimal.NewFromString(s.MinQty)
+			maxQty, _ := decimal.NewFromString(s.MaxQty)
+			stepSize, _ := decimal.NewFromString(s.StepSize)
+			minNotional, _ := decimal.NewFromString(s.MinNotional)
+			
 			return &types.SymbolInfo{
 				Symbol:              s.Symbol,
 				BaseAsset:           s.Base,
 				QuoteAsset:          s.Quote,
 				Status:              s.Status,
-				MinQuantity:         parseFloat64(s.MinQty),
-				MaxQuantity:         parseFloat64(s.MaxQty),
-				StepSize:            parseFloat64(s.StepSize),
-				MinNotional:         parseFloat64(s.MinNotional),
+				MinQty:              minQty,
+				MaxQty:              maxQty,
+				StepSize:            stepSize,
+				MinNotional:         minNotional,
 				IsSpotTradingAllowed: true,
 				IsMarginTradingAllowed: false,
 			}, nil

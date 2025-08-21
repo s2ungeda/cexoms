@@ -237,7 +237,7 @@ func (mm *MarketMaker) placeQuote(ctx context.Context, quote *Quote) {
 	}
 	
 	// Place order
-	placedOrder, err := mm.exchange.CreateOrder(ctx, order)
+	placedOrder, err := mm.exchange.PlaceOrder(ctx, order)
 	if err != nil {
 		fmt.Printf("Failed to place order: %v\n", err)
 		return
@@ -262,7 +262,7 @@ func (mm *MarketMaker) updateActiveOrders(ctx context.Context, newQuotes []*Quot
 	for orderID, order := range mm.activeOrders {
 		key := fmt.Sprintf("%s_%s_%s", order.Side, order.Price, order.Quantity)
 		if !newQuoteMap[key] {
-			mm.exchange.CancelOrder(ctx, orderID)
+			mm.exchange.CancelOrder(ctx, order.Symbol, orderID)
 			delete(mm.activeOrders, orderID)
 		}
 	}
@@ -309,7 +309,7 @@ func (mm *MarketMaker) handleOrderUpdate(order *types.Order) {
 	// Update order status
 	if existing, exists := mm.activeOrders[order.ExchangeOrderID]; exists {
 		existing.Status = order.Status
-		existing.FilledQuantity = order.FilledQuantity
+		existing.ExecutedQty = order.ExecutedQty
 		existing.UpdatedAt = order.UpdatedAt
 		
 		// Remove if terminal state
@@ -333,7 +333,7 @@ func (mm *MarketMaker) handleTradeUpdate(trade *types.Trade) {
 	mm.updateMetrics(trade)
 	
 	// Check if we need to rebalance
-	inventory := mm.inventoryMgr.(*InventoryManagerImpl).GetInventoryState()
+	_ = mm.inventoryMgr.(*InventoryManagerImpl).GetInventoryState()
 	if shouldHedge, hedgeAmount := mm.inventoryMgr.(*InventoryManagerImpl).ShouldHedge(); shouldHedge {
 		// Create hedge order (would be placed on another exchange/instrument)
 		fmt.Printf("Should hedge position: %v\n", hedgeAmount)
@@ -364,7 +364,7 @@ func (mm *MarketMaker) metricsWorker(ctx context.Context) {
 // subscribeToMarketData subscribes to real-time market data
 func (mm *MarketMaker) subscribeToMarketData() error {
 	// Subscribe to order book
-	bookCallback := func(book *types.OrderBook) {
+	bookCallback := func(symbol string, book *types.OrderBook) {
 		mm.updateMarketState(book)
 	}
 	
@@ -373,7 +373,7 @@ func (mm *MarketMaker) subscribeToMarketData() error {
 	}
 	
 	// Subscribe to trades
-	tradeCallback := func(trade *types.Trade) {
+	tradeCallback := func(symbol string, trade *types.Trade) {
 		mm.updateTradeFlow(trade)
 	}
 	
@@ -473,8 +473,10 @@ func (mm *MarketMaker) cancelAllOrdersLocked() error {
 	ctx := context.Background()
 	
 	for orderID := range mm.activeOrders {
-		if err := mm.exchange.CancelOrder(ctx, orderID); err != nil {
-			fmt.Printf("Failed to cancel order %s: %v\n", orderID, err)
+		if order, exists := mm.activeOrders[orderID]; exists {
+			if err := mm.exchange.CancelOrder(ctx, order.Symbol, orderID); err != nil {
+				fmt.Printf("Failed to cancel order %s: %v\n", orderID, err)
+			}
 		}
 	}
 	

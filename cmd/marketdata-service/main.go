@@ -240,7 +240,7 @@ func (s *MarketDataService) start24hrTickerStream(symbol string) error {
 			"open_price":   event.OpenPrice,
 			"high_24h":     event.HighPrice,
 			"low_24h":      event.LowPrice,
-			"volume_24h":   event.Volume,
+			"volume_24h":   event.BaseVolume,
 			"quote_volume": event.QuoteVolume,
 			"change_24h":   event.PriceChangePercent,
 			"change_abs":   event.PriceChange,

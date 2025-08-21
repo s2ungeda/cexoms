@@ -2,6 +2,7 @@ package marketmaker
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -120,7 +121,6 @@ func (rm *RiskManagerImpl) GetMaxOrderSize(side types.OrderSide) decimal.Decimal
 	}
 	
 	// Get base limit from inventory manager
-	inventory := rm.inventoryMgr.(*InventoryManagerImpl).GetInventoryState()
 	baseLimit := rm.inventoryMgr.GetPositionLimit(side)
 	
 	// Apply additional risk-based scaling
@@ -330,7 +330,7 @@ func (rm *RiskManagerImpl) calculateSharpe() decimal.Decimal {
 	}
 	
 	// Simplified Sharpe (not annualized)
-	stdDev := decimal.NewFromFloat(variance.InexactFloat64()).Sqrt()
+	stdDev := decimal.NewFromFloat(math.Sqrt(variance.InexactFloat64()))
 	
 	if stdDev.IsZero() {
 		return decimal.Zero

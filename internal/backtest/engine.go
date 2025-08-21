@@ -35,21 +35,6 @@ type BacktestEngine struct {
 	metrics *BacktestMetrics
 }
 
-// BacktestConfig contains backtest configuration
-type BacktestConfig struct {
-	StartTime        time.Time
-	EndTime          time.Time
-	InitialCapital   decimal.Decimal
-	TradingFees      decimal.Decimal // percentage
-	SlippageModel    SlippageModel
-	ExecutionLatency time.Duration
-	DataFrequency    time.Duration
-}
-
-// SlippageModel defines how to calculate slippage
-type SlippageModel interface {
-	CalculateSlippage(order *types.Order, marketDepth map[string]interface{}) decimal.Decimal
-}
 
 // Portfolio tracks account state
 type Portfolio struct {
@@ -115,11 +100,6 @@ type BacktestMetrics struct {
 	DailyReturns     []DailyReturn
 }
 
-// EquityPoint represents portfolio value at a point in time
-type EquityPoint struct {
-	Time  time.Time
-	Value decimal.Decimal
-}
 
 // DrawdownPoint represents drawdown at a point in time
 type DrawdownPoint struct {
@@ -127,11 +107,6 @@ type DrawdownPoint struct {
 	Drawdown decimal.Decimal
 }
 
-// DailyReturn represents daily return
-type DailyReturn struct {
-	Date   time.Time
-	Return decimal.Decimal
-}
 
 // NewBacktestEngine creates a new backtest engine
 func NewBacktestEngine(eventStore *EventStore, config BacktestConfig) (*BacktestEngine, error) {
@@ -142,7 +117,7 @@ func NewBacktestEngine(eventStore *EventStore, config BacktestConfig) (*Backtest
 	}
 	
 	// Create risk engine
-	riskEngine := risk.NewRiskEngine()
+	riskEngine := risk.NewRiskManager()
 	
 	return &BacktestEngine{
 		eventStore:      eventStore,

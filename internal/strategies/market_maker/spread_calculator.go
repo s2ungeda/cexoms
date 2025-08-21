@@ -192,7 +192,6 @@ func (sc *DynamicSpreadCalculator) UpdateTradeFlow(flow *TradeFlow) {
 	sc.tradeHistory = append(sc.tradeHistory, flow)
 	
 	// Keep only recent history
-	cutoff := time.Now().Add(-30 * time.Minute)
 	filtered := make([]*TradeFlow, 0)
 	
 	for _, f := range sc.tradeHistory {

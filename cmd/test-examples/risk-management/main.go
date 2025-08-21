@@ -81,12 +81,11 @@ func main() {
 	btcPosition := &types.Position{
 		Symbol:        "BTCUSDT",
 		Side:          types.Side("LONG"),
-		Quantity:      0.5,
-		EntryPrice:    40000,
-		MarkPrice:     41000,
-		UnrealizedPNL: 500,
+		Amount:        decimal.NewFromFloat(0.5),
+		EntryPrice:    decimal.NewFromInt(40000),
+		MarkPrice:     decimal.NewFromInt(41000),
+		UnrealizedPnL: decimal.NewFromInt(500),
 		Leverage:      5,
-		UpdatedAt:     time.Now(),
 	}
 	
 	monitor.UpdatePosition("main-account", btcPosition)
@@ -102,12 +101,11 @@ func main() {
 	ethPosition := &types.Position{
 		Symbol:        "ETHUSDT",
 		Side:          types.Side("LONG"),
-		Quantity:      5,
-		EntryPrice:    2500,
-		MarkPrice:     2450,
-		UnrealizedPNL: -250,
+		Amount:        decimal.NewFromInt(5),
+		EntryPrice:    decimal.NewFromInt(2500),
+		MarkPrice:     decimal.NewFromInt(2450),
+		UnrealizedPnL: decimal.NewFromInt(-250),
 		Leverage:      3,
-		UpdatedAt:     time.Now(),
 	}
 	
 	monitor.UpdatePosition("main-account", ethPosition)

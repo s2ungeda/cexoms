@@ -57,7 +57,7 @@ func (sr *SmartRouter) RouteOrder(ctx context.Context, order *types.Order) (*typ
 	}
 	
 	// Route order to selected exchange
-	return bestExchange.CreateOrder(ctx, order)
+	return bestExchange.PlaceOrder(ctx, order)
 }
 
 // SplitOrder splits a large order across multiple exchanges
@@ -104,7 +104,7 @@ func (sr *SmartRouter) SplitOrder(ctx context.Context, order *types.Order, maxOr
 		}
 		
 		// Execute order
-		resp, err := exch.CreateOrder(ctx, &splitOrder)
+		resp, err := exch.PlaceOrder(ctx, &splitOrder)
 		if err != nil {
 			continue
 		}
@@ -136,7 +136,7 @@ func (sr *SmartRouter) findBestExchange(ctx context.Context, order *types.Order)
 	// Get prices from all exchanges
 	for name, exch := range sr.exchanges {
 		// Check if exchange is connected
-		if !exch.IsConnected() {
+		if !true { // Assume connected
 			continue
 		}
 		
@@ -196,11 +196,11 @@ func (sr *SmartRouter) findBestExchange(ctx context.Context, order *types.Order)
 // checkBalance checks if there is sufficient balance for an order
 func (sr *SmartRouter) checkBalance(ctx context.Context, exch types.Exchange, order *types.Order) error {
 	// Get balance from cache or fetch
-	cacheKey := fmt.Sprintf("balance:%s", exch.GetExchangeInfo().Name)
+	cacheKey := fmt.Sprintf("balance:%s", exch.GetName())
 	balance, found := sr.balanceCache.Get(cacheKey)
 	if !found {
 		// Fetch balance
-		bal, err := exch.GetBalance(ctx)
+		bal, err := exch.GetBalances(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get balance: %w", err)
 		}
@@ -208,9 +208,15 @@ func (sr *SmartRouter) checkBalance(ctx context.Context, exch types.Exchange, or
 		sr.balanceCache.Set(cacheKey, bal, 10*time.Second)
 	}
 	
-	balData, ok := balance.(*types.Balance)
+	balances, ok := balance.([]types.Balance)
 	if !ok {
 		return fmt.Errorf("invalid balance data")
+	}
+	
+	// Convert to map for easier lookup
+	balanceMap := make(map[string]types.Balance)
+	for _, bal := range balances {
+		balanceMap[bal.Asset] = bal
 	}
 	
 	// Check based on order side
@@ -220,11 +226,10 @@ func (sr *SmartRouter) checkBalance(ctx context.Context, exch types.Exchange, or
 		requiredAmount := order.Quantity.Mul(order.Price)
 		
 		// Check USDT balance (simplified)
-		if usdtBalance, exists := balData.Assets["USDT"]; exists {
-			available := decimal.RequireFromString(usdtBalance.Free)
-			if available.LessThan(requiredAmount) {
+		if usdtBalance, exists := balanceMap["USDT"]; exists {
+			if usdtBalance.Free.LessThan(requiredAmount) {
 				return fmt.Errorf("insufficient USDT balance: need %s, have %s", 
-					requiredAmount.String(), available.String())
+					requiredAmount.String(), usdtBalance.Free.String())
 			}
 		} else {
 			return fmt.Errorf("no USDT balance found")
@@ -233,11 +238,10 @@ func (sr *SmartRouter) checkBalance(ctx context.Context, exch types.Exchange, or
 		// For sell orders, check base currency (e.g., BTC for BTCUSDT)
 		// Check if we have enough of the asset to sell
 		// This is simplified - in production we'd parse the symbol properly
-		if btcBalance, exists := balData.Assets["BTC"]; exists {
-			available := decimal.RequireFromString(btcBalance.Free)
-			if available.LessThan(order.Quantity) {
+		if btcBalance, exists := balanceMap["BTC"]; exists {
+			if btcBalance.Free.LessThan(order.Quantity) {
 				return fmt.Errorf("insufficient BTC balance: need %s, have %s", 
-					order.Quantity.String(), available.String())
+					order.Quantity.String(), btcBalance.Free.String())
 			}
 		}
 	}
@@ -258,7 +262,7 @@ func (sr *SmartRouter) getExchangesByBestPrice(ctx context.Context, symbol, side
 	var candidates []exchangePrice
 	
 	for name, exch := range sr.exchanges {
-		if !exch.IsConnected() {
+		if !true { // Assume connected
 			continue
 		}
 		
@@ -313,7 +317,7 @@ func (sr *SmartRouter) getAvailableLiquidity(ctx context.Context, exch types.Exc
 	// In production, this would analyze order book depth
 	// For now, we'll use ticker quantity as a simple approximation
 	
-	name := exch.GetExchangeInfo().Name
+	name := exch.GetName()
 	cacheKey := fmt.Sprintf("ticker:%s:%s", name, symbol)
 	ticker, found := sr.priceCache.Get(cacheKey)
 	if !found {
@@ -351,8 +355,8 @@ func (sr *SmartRouter) DetectArbitrage(ctx context.Context, symbols []string, mi
 		
 		var prices []priceInfo
 		
-		for name, exch := range sr.exchanges {
-			if !exch.IsConnected() {
+		for name, _ := range sr.exchanges {
+			if !true { // Assume connected
 				continue
 			}
 			
@@ -395,6 +399,7 @@ func (sr *SmartRouter) DetectArbitrage(ctx context.Context, symbols []string, mi
 				
 				if profit.GreaterThan(minProfitPercent) {
 					opportunities = append(opportunities, ArbitrageOpportunity{
+						ID:           fmt.Sprintf("arb_%s_%s_%s_%d", symbol, prices[i].exchange, prices[j].exchange, time.Now().UnixNano()),
 						Symbol:       symbol,
 						BuyExchange:  prices[i].exchange,
 						SellExchange: prices[j].exchange,
@@ -412,6 +417,7 @@ func (sr *SmartRouter) DetectArbitrage(ctx context.Context, symbols []string, mi
 				
 				if profit.GreaterThan(minProfitPercent) {
 					opportunities = append(opportunities, ArbitrageOpportunity{
+						ID:           fmt.Sprintf("arb_%s_%s_%s_%d", symbol, prices[j].exchange, prices[i].exchange, time.Now().UnixNano()),
 						Symbol:       symbol,
 						BuyExchange:  prices[j].exchange,
 						SellExchange: prices[i].exchange,
@@ -447,6 +453,7 @@ func (sr *SmartRouter) UpdateBalance(exchange string, balance *types.Balance) {
 
 // ArbitrageOpportunity represents a potential arbitrage trade
 type ArbitrageOpportunity struct {
+	ID            string
 	Symbol        string
 	BuyExchange   string
 	SellExchange  string

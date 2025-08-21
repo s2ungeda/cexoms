@@ -3,116 +3,65 @@ package types
 import (
 	"context"
 	"time"
-	
-	"github.com/shopspring/decimal"
 )
 
 // Exchange defines the interface that all exchange connectors must implement
 type Exchange interface {
-	// Connection management
-	Connect(ctx context.Context) error
-	Disconnect() error
-	IsConnected() bool
+	// Basic info
+	GetName() string
+	GetType() ExchangeType
+	GetMarketType() MarketType
 	
-	// Order operations (WebSocket preferred, REST as fallback)
-	CreateOrder(ctx context.Context, order *Order) (*Order, error)
+	// Initialization
+	Initialize(ctx context.Context) error
+	
+	// Account operations
+	GetAccountInfo(ctx context.Context) (*AccountInfo, error)
+	GetBalances(ctx context.Context) ([]Balance, error)
+	
+	// Order operations
+	PlaceOrder(ctx context.Context, order *Order) (*Order, error)
 	CancelOrder(ctx context.Context, symbol string, orderID string) error
 	GetOrder(ctx context.Context, symbol string, orderID string) (*Order, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]*Order, error)
+	GetOrderHistory(ctx context.Context, symbol string, limit int) ([]*Order, error)
 	
-	// Account operations
-	GetBalance(ctx context.Context) (*Balance, error)
-	GetPositions(ctx context.Context) ([]*Position, error)
+	// Trade operations
+	GetTrades(ctx context.Context, symbol string, limit int) ([]*Trade, error)
 	
 	// Market data
-	SubscribeMarketData(ctx context.Context, symbols []string) error
-	UnsubscribeMarketData(ctx context.Context, symbols []string) error
+	GetSymbolInfo(ctx context.Context, symbol string) (*SymbolInfo, error)
+	GetMarketData(ctx context.Context, symbols []string) (map[string]*MarketData, error)
+	GetOrderBook(ctx context.Context, symbol string, depth int) (*OrderBook, error)
+	GetKlines(ctx context.Context, symbol string, interval KlineInterval, limit int) ([]*Kline, error)
 	
-	// Exchange info
-	GetExchangeInfo() ExchangeInfo
-	GetSymbolInfo(symbol string) (*SymbolInfo, error)
+	// WebSocket operations (optional - implement if supported)
+	SubscribeOrderBook(symbol string, callback OrderBookCallback) error
+	SubscribeTrades(symbol string, callback TradeCallback) error
+	SubscribeTicker(symbol string, callback TickerCallback) error
+	UnsubscribeAll() error
+}
+
+// FuturesExchange extends Exchange with futures-specific functionality
+type FuturesExchange interface {
+	Exchange
 	
-	// WebSocket order manager (returns nil if not supported)
-	GetWebSocketOrderManager() WebSocketOrderManager
+	// Position operations
+	GetPositions(ctx context.Context) ([]*Position, error)
+	GetPosition(ctx context.Context, symbol string) (*Position, error)
 	
-	// WebSocket capabilities
-	GetWebSocketInfo() ExchangeWebSocketInfo
+	// Futures-specific operations
+	SetLeverage(ctx context.Context, symbol string, leverage int) error
+	SetMarginMode(ctx context.Context, symbol string, marginMode MarginMode) error
+	GetFundingRate(ctx context.Context, symbol string) (*FundingRate, error)
 }
 
-
-// Position represents a trading position
-type Position struct {
-	Exchange      string
-	Symbol        string
-	Side          Side
-	Quantity      float64
-	EntryPrice    float64
-	MarkPrice     float64
-	UnrealizedPNL float64
-	UnrealizedPnL float64 // Alias for compatibility
-	RealizedPNL   float64
-	Margin        float64
-	Leverage      float64
-	UpdatedAt     time.Time
-}
-
-// Helper method for compatibility
-func (p *Position) GetUnrealizedPnL() float64 {
-	return p.UnrealizedPNL
-}
-
-
-// MarketData represents market data snapshot
-type MarketData struct {
-	Exchange     string
-	Symbol       string
-	BidPrice     float64
-	BidQuantity  float64
-	AskPrice     float64
-	AskQuantity  float64
-	LastPrice    float64
-	Volume24h    float64
-	Timestamp    time.Time
-}
-
-// SymbolInfo contains symbol trading rules
-type SymbolInfo struct {
-	Symbol              string
-	BaseAsset           string
-	QuoteAsset          string
-	Status              string
-	MinPrice            float64
-	MaxPrice            float64
-	TickSize            float64
-	MinQuantity         float64
-	MaxQuantity         float64
-	StepSize            float64
-	MinNotional         float64
-	IsSpotTradingAllowed bool
-	IsMarginTradingAllowed bool
-}
-
-
-
-// Enums
-type Side string
-type OrderType string
-type OrderStatus string
-type TimeInForce string
-
-type ExchangeType string
-const (
-	ExchangeBinanceSpot    ExchangeType = "BINANCE_SPOT"
-	ExchangeBinanceFutures ExchangeType = "BINANCE_FUTURES"
-	ExchangeBybitSpot      ExchangeType = "BYBIT_SPOT"
-	ExchangeBybitFutures   ExchangeType = "BYBIT_FUTURES"
-	ExchangeOKXSpot        ExchangeType = "OKX_SPOT"
-	ExchangeOKXFutures     ExchangeType = "OKX_FUTURES"
-	ExchangeUpbit          ExchangeType = "UPBIT"
-)
-
-// PriceLevel represents a price and quantity pair in order book
-type PriceLevel struct {
-	Price    decimal.Decimal `json:"price"`
-	Quantity decimal.Decimal `json:"quantity"`
+// ExchangeWebSocketInfo represents WebSocket capabilities
+type ExchangeWebSocketInfo struct {
+	SupportsOrderManagement bool
+	SupportsAccountUpdates  bool
+	SupportsMarketData      bool
+	SupportsPositionUpdates bool
+	MaxConnections          int
+	PingInterval            time.Duration
 }

@@ -91,11 +91,3 @@ type WebSocketOrderSupport struct {
 	OrderUpdates   bool
 }
 
-// ExchangeWebSocketInfo provides WebSocket capabilities info
-type ExchangeWebSocketInfo struct {
-	Supported      bool
-	OrderSupport   WebSocketOrderSupport
-	BaseURL        string
-	TestnetURL     string
-	Documentation  string
-}

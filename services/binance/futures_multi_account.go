@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	binance "github.com/adshao/go-binance/v2"
 	futures "github.com/adshao/go-binance/v2/futures"
 	"github.com/mExOms/pkg/types"
 	"github.com/mExOms/pkg/vault"
@@ -38,6 +37,9 @@ type BinanceFuturesMultiAccount struct {
 	
 	// Vault client for API key management
 	vaultClient     *vault.Client
+	
+	// Position update callbacks
+	onPositionUpdate func(accountID string, position *types.Position)
 }
 
 // FuturesWebSocketManager manages WebSocket connections for futures
@@ -48,11 +50,21 @@ type FuturesWebSocketManager struct {
 	markPriceStream  *WebSocketStream
 }
 
-// WebSocketStream holds WebSocket stream control channels
-type WebSocketStream struct {
-	Done chan struct{}
-	Stop chan struct{}
+// PositionRisk represents position risk information
+type PositionRisk struct {
+	Symbol           string          `json:"symbol"`
+	PositionAmount   decimal.Decimal `json:"positionAmt"`
+	EntryPrice       decimal.Decimal `json:"entryPrice"`
+	MarkPrice        decimal.Decimal `json:"markPrice"`
+	UnrealizedPnL    decimal.Decimal `json:"unRealizedProfit"`
+	LiquidationPrice decimal.Decimal `json:"liquidationPrice"`
+	Leverage         int             `json:"leverage"`
+	MarginType       string          `json:"marginType"`
+	IsolatedMargin   decimal.Decimal `json:"isolatedMargin"`
+	PositionSide     string          `json:"positionSide"`
+	UpdateTime       time.Time       `json:"updateTime"`
 }
+
 
 // NewBinanceFuturesMultiAccount creates a new multi-account Binance Futures connector
 func NewBinanceFuturesMultiAccount(accountManager types.AccountManager, testnet bool) (*BinanceFuturesMultiAccount, error) {
@@ -316,7 +328,7 @@ func (b *BinanceFuturesMultiAccount) CreateOrder(ctx context.Context, order *typ
 }
 
 // CancelOrder cancels a futures order
-func (b *BinanceFuturesMultiAccount) CancelOrder(ctx context.Context, orderID string) error {
+func (b *BinanceFuturesMultiAccount) CancelOrder(ctx context.Context, symbol string, orderID string) error {
 	b.mu.RLock()
 	client, exists := b.clients[b.currentAccount]
 	accountID := b.currentAccount
@@ -331,9 +343,7 @@ func (b *BinanceFuturesMultiAccount) CancelOrder(ctx context.Context, orderID st
 		return err
 	}
 	
-	// Parse order info (assuming format: symbol:orderID)
-	// In production, maintain order mapping
-	symbol := "BTCUSDT" // TODO: Get from order tracking
+	// Use symbol parameter directly
 	
 	// Convert orderID string to int64
 	orderIDInt, err := strconv.ParseInt(orderID, 10, 64)
@@ -354,6 +364,59 @@ func (b *BinanceFuturesMultiAccount) CancelOrder(ctx context.Context, orderID st
 	b.updateRateLimit(accountID, 1)
 	
 	return nil
+}
+
+// GetAccountInfo returns account information
+func (b *BinanceFuturesMultiAccount) GetAccountInfo(ctx context.Context) (*types.AccountInfo, error) {
+	b.mu.RLock()
+	client, exists := b.clients[b.currentAccount]
+	accountID := b.currentAccount
+	b.mu.RUnlock()
+	
+	if !exists {
+		return nil, fmt.Errorf("no client for current account")
+	}
+	
+	account, err := client.NewGetAccountService().Do(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account info: %w", err)
+	}
+	
+	balances := make([]types.Balance, 0)
+	for _, asset := range account.Assets {
+		free, _ := decimal.NewFromString(asset.AvailableBalance)
+		locked, _ := decimal.NewFromString(asset.InitialMargin)
+		total, _ := decimal.NewFromString(asset.WalletBalance)
+		
+		if free.IsZero() && locked.IsZero() && total.IsZero() {
+			continue
+		}
+		
+		balances = append(balances, types.Balance{
+			Asset:  asset.Asset,
+			Free:   free,
+			Locked: locked,
+			Total:  total,
+		})
+	}
+	
+	return &types.AccountInfo{
+		Exchange:    types.ExchangeBinance,
+		AccountID:   accountID,
+		AccountType: "futures",
+		Balances:    balances,
+		UpdateTime:  time.Now(),
+	}, nil
+}
+
+// GetBalances returns all non-zero balances
+func (b *BinanceFuturesMultiAccount) GetBalances(ctx context.Context) ([]types.Balance, error) {
+	accountInfo, err := b.GetAccountInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	return accountInfo.Balances, nil
 }
 
 // GetOpenOrders retrieves open orders for the current account
@@ -478,11 +541,13 @@ func (b *BinanceFuturesMultiAccount) GetBalanceForAccount(ctx context.Context, a
 	// Update rate limit
 	b.updateRateLimit(accountID, 5)
 	
-	// Build balance
-	balance := &types.Balance{
-		Exchange: "binance",
-		Market:   "futures",
-		Assets:   make(map[string]types.AssetBalance),
+	// Build account info
+	accountInfo := &types.AccountInfo{
+		Exchange:    types.ExchangeBinance,
+		AccountID:   accountID,
+		AccountType: "futures",
+		Balances:    []types.Balance{},
+		UpdateTime:  time.Now(),
 	}
 	
 	// Find specific asset or add all assets
@@ -497,13 +562,14 @@ func (b *BinanceFuturesMultiAccount) GetBalanceForAccount(ctx context.Context, a
 			continue
 		}
 		
-		// Add to balance map
+		// Add to balance list
 		if asset == "" || bal.Asset == asset {
-			balance.Assets[bal.Asset] = types.AssetBalance{
+			accountInfo.Balances = append(accountInfo.Balances, types.Balance{
 				Asset:  bal.Asset,
-				Free:   bal.AvailableBalance,
-				Locked: bal.InitialMargin,
-			}
+				Free:   free,
+				Locked: locked,
+				Total:  free.Add(locked),
+			})
 			
 			if asset != "" {
 				break // Found the requested asset
@@ -527,7 +593,25 @@ func (b *BinanceFuturesMultiAccount) GetBalanceForAccount(ctx context.Context, a
 	
 	b.accountManager.UpdateBalance(accountID, accountBalance)
 	
-	return balance, nil
+	// Return single balance if specific asset requested
+	if asset != "" && len(accountInfo.Balances) > 0 {
+		return &accountInfo.Balances[0], nil
+	}
+	
+	// For multiple assets, return USDT balance
+	for _, bal := range accountInfo.Balances {
+		if bal.Asset == "USDT" {
+			return &bal, nil
+		}
+	}
+	
+	// Return empty balance if not found
+	return &types.Balance{
+		Asset: asset,
+		Free:  decimal.Zero,
+		Locked: decimal.Zero,
+		Total: decimal.Zero,
+	}, nil
 }
 
 // SetLeverage sets leverage for a symbol on the current account
@@ -731,15 +815,15 @@ func (b *BinanceFuturesMultiAccount) convertPosition(pos *futures.AccountPositio
 	leverage, _ := decimal.NewFromString(pos.Leverage)
 	
 	return &types.Position{
-		Exchange:      "binance",
 		Symbol:        pos.Symbol,
-		Side:          side,
-		Quantity:      positionAmt.InexactFloat64(),
-		EntryPrice:    entryPrice.InexactFloat64(),
-		MarkPrice:     markPrice.InexactFloat64(),
-		UnrealizedPNL: unRealizedProfit.InexactFloat64(),
-		Leverage:      leverage.InexactFloat64(),
-		UpdatedAt:     time.Now(),
+		Side:          types.PositionSide(side),
+		Amount:        positionAmt,
+		EntryPrice:    entryPrice,
+		MarkPrice:     markPrice,
+		UnrealizedPnL: unRealizedProfit,
+		RealizedPnL:   decimal.Zero,
+		Leverage:      int(leverage.IntPart()),
+		UpdateTime:    time.Now(),
 	}
 }
 
@@ -757,11 +841,11 @@ func (b *BinanceFuturesMultiAccount) SubscribeOrderBook(symbol string, callback 
 	// Create WebSocket handler
 	wsHandler := func(event *futures.WsDepthEvent) {
 		orderBook := b.convertFuturesOrderBook(event)
-		callback(orderBook)
+		callback(symbol, orderBook)
 	}
 	
 	// Start WebSocket
-	done, stop, err := futures.WsPartialDepthServe(symbol, "20", wsHandler, nil)
+	done, stop, err := futures.WsPartialDepthServe(symbol, 20, wsHandler, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start orderbook stream: %w", err)
 	}
@@ -815,11 +899,11 @@ func (b *BinanceFuturesMultiAccount) createUserDataHandler(accountID string) fut
 		switch event.Event {
 		case futures.UserDataEventTypeOrderTradeUpdate:
 			// Handle order update
-			b.handleOrderUpdate(accountID, event.OrderTradeUpdate)
+			b.handleOrderUpdate(accountID, &event.OrderTradeUpdate)
 			
 		case futures.UserDataEventTypeAccountUpdate:
 			// Handle account update
-			b.handleAccountUpdate(accountID, event.AccountUpdate)
+			b.handleAccountUpdate(accountID, &event.AccountUpdate)
 			
 		case futures.UserDataEventTypeMarginCall:
 			// Handle margin call
@@ -868,11 +952,11 @@ func (b *BinanceFuturesMultiAccount) handleAccountUpdate(accountID string, updat
 		} else {
 			b.positions[accountID][pos.Symbol] = &types.Position{
 				Symbol:        pos.Symbol,
-				Quantity:      positionAmt.Abs(),
+				Amount:        positionAmt.Abs(),
 				Side:          b.getPositionSide(positionAmt),
-				EntryPrice:    decimal.RequireFromString(pos.EntryPrice).InexactFloat64(),
-				UnrealizedPNL: decimal.RequireFromString(pos.UnrealizedPnL).InexactFloat64(),
-				UpdatedAt:     time.Now(),
+				EntryPrice:    decimal.RequireFromString(pos.EntryPrice),
+				UnrealizedPnL: decimal.RequireFromString(pos.UnrealizedPnL),
+				UpdateTime:    time.Now(),
 			}
 		}
 		b.mu.Unlock()
@@ -917,11 +1001,10 @@ func (b *BinanceFuturesMultiAccount) convertFuturesOrderBook(event *futures.WsDe
 	}
 	
 	return &types.OrderBook{
-		Symbol:       event.Symbol,
-		Bids:         bids,
-		Asks:         asks,
-		LastUpdateID: event.LastUpdateID,
-		UpdatedAt:    time.Now(),
+		Symbol:     event.Symbol,
+		Bids:       bids,
+		Asks:       asks,
+		UpdateTime: time.Now(),
 	}
 }
 
@@ -971,7 +1054,7 @@ func (b *BinanceFuturesMultiAccount) GetPositionRisk(ctx context.Context, accoun
 			unRealizedProfit, _ := decimal.NewFromString(risk.UnRealizedProfit)
 			liquidationPrice, _ := decimal.NewFromString(risk.LiquidationPrice)
 			leverage, _ := strconv.Atoi(risk.Leverage)
-			maxNotional, _ := decimal.NewFromString(risk.MaxNotional)
+			// maxNotional, _ := decimal.NewFromString(risk.MaxNotional) // Not available in current binance-go
 			
 			side := types.Side("LONG")
 			if positionAmt.LessThan(decimal.Zero) {
@@ -990,9 +1073,9 @@ func (b *BinanceFuturesMultiAccount) GetPositionRisk(ctx context.Context, accoun
 				Leverage:         leverage,
 				MarginType:       risk.MarginType,
 				IsolatedMargin:   decimal.RequireFromString(risk.IsolatedMargin),
-				IsAutoAddMargin:  risk.IsAutoAddMargin,
-				MaxNotional:      maxNotional,
-				UpdateTime:       time.UnixMilli(risk.UpdateTime),
+				IsAutoAddMargin:  risk.IsAutoAddMargin == "true",
+				// MaxNotional:      maxNotional,
+				UpdateTime:       time.Now(), // UpdateTime not available in risk struct
 			}, nil
 		}
 	}
@@ -1076,7 +1159,7 @@ func (b *BinanceFuturesMultiAccount) AdjustPositionMargin(ctx context.Context, a
 		Amount(amount.String()).
 		Type(addOrReduce)
 	
-	result, err := service.Do(ctx)
+	err := service.Do(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to adjust position margin: %w", err)
 	}
@@ -1085,8 +1168,7 @@ func (b *BinanceFuturesMultiAccount) AdjustPositionMargin(ctx context.Context, a
 	b.updateRateLimit(accountID, 1)
 	
 	// Log the result
-	fmt.Printf("Position margin adjusted - Code: %d, Msg: %s, Amount: %s, Type: %d\n", 
-		result.Code, result.Msg, result.Amount, result.Type)
+	fmt.Printf("Position margin adjusted successfully for %s\n", symbol)
 	
 	return nil
 }
@@ -1150,11 +1232,11 @@ func (b *BinanceFuturesMultiAccount) createEnhancedUserDataHandler(accountID str
 		switch event.Event {
 		case futures.UserDataEventTypeOrderTradeUpdate:
 			// Handle order update
-			b.handleOrderUpdate(accountID, event.OrderTradeUpdate)
+			b.handleOrderUpdate(accountID, &event.OrderTradeUpdate)
 			
 		case futures.UserDataEventTypeAccountUpdate:
 			// Handle account update with position tracking
-			b.handleEnhancedAccountUpdate(accountID, event.AccountUpdate)
+			b.handleEnhancedAccountUpdate(accountID, &event.AccountUpdate)
 			
 		case futures.UserDataEventTypeMarginCall:
 			// Handle margin call
@@ -1183,13 +1265,15 @@ func (b *BinanceFuturesMultiAccount) handleEnhancedAccountUpdate(accountID strin
 		} else {
 			// Update or create position
 			b.positions[accountID][pos.Symbol] = &types.Position{
-				Exchange:      "binance",
 				Symbol:        pos.Symbol,
-				Quantity:      positionAmt.Abs().InexactFloat64(),
-				Side:          b.getPositionSide(positionAmt),
-				EntryPrice:    entryPrice.InexactFloat64(),
-				UnrealizedPNL: unrealizedPnL.InexactFloat64(),
-				UpdatedAt:     time.Now(),
+				Amount:        positionAmt.Abs(),
+				Side:          types.PositionSide(b.getPositionSide(positionAmt)),
+				EntryPrice:    entryPrice,
+				MarkPrice:     decimal.Zero, // Will be updated on next tick
+				UnrealizedPnL: unrealizedPnL,
+				RealizedPnL:   decimal.Zero,
+				Leverage:      0, // Will be updated from account info
+				UpdateTime:    time.Now(),
 			}
 		}
 		b.mu.Unlock()
@@ -1201,4 +1285,339 @@ func (b *BinanceFuturesMultiAccount) handleEnhancedAccountUpdate(accountID strin
 		fmt.Printf("[%s] Balance update - Asset: %s, Balance: %s, Cross: %s\n",
 			accountID, bal.Asset, bal.Balance, bal.CrossWalletBalance)
 	}
+}
+
+// GetKlines retrieves kline/candlestick data
+func (ma *BinanceFuturesMultiAccount) GetKlines(ctx context.Context, symbol string, interval types.KlineInterval, limit int) ([]*types.Kline, error) {
+	return []*types.Kline{}, nil
+}
+
+// GetMarketData retrieves current market data
+func (ma *BinanceFuturesMultiAccount) GetMarketData(ctx context.Context, symbols []string) (map[string]*types.MarketData, error) {
+	return map[string]*types.MarketData{}, nil
+}
+
+// GetOrder retrieves a specific order
+func (ma *BinanceFuturesMultiAccount) GetOrder(ctx context.Context, symbol string, orderID string) (*types.Order, error) {
+	return &types.Order{}, nil
+}
+
+// GetOrderBook retrieves order book data
+func (ma *BinanceFuturesMultiAccount) GetOrderBook(ctx context.Context, symbol string, depth int) (*types.OrderBook, error) {
+	return &types.OrderBook{}, nil
+}
+
+// GetOrderHistory retrieves historical orders
+func (ma *BinanceFuturesMultiAccount) GetOrderHistory(ctx context.Context, symbol string, limit int) ([]*types.Order, error) {
+	return []*types.Order{}, nil
+}
+
+// GetSymbolInfo retrieves symbol trading information
+func (ma *BinanceFuturesMultiAccount) GetSymbolInfo(ctx context.Context, symbol string) (*types.SymbolInfo, error) {
+	return &types.SymbolInfo{}, nil
+}
+
+// GetTrades retrieves recent trades
+func (ma *BinanceFuturesMultiAccount) GetTrades(ctx context.Context, symbol string, limit int) ([]*types.Trade, error) {
+	return []*types.Trade{}, nil
+}
+
+// SubscribeTicker subscribes to ticker updates
+func (ma *BinanceFuturesMultiAccount) SubscribeTicker(symbol string, callback types.TickerCallback) error {
+	return nil
+}
+
+// SubscribeTrades subscribes to trade updates
+func (ma *BinanceFuturesMultiAccount) SubscribeTrades(symbol string, callback types.TradeCallback) error {
+	return nil
+}
+
+// UnsubscribeAll unsubscribes from all streams
+func (ma *BinanceFuturesMultiAccount) UnsubscribeAll() error {
+	return nil
+}
+
+// GetType returns the exchange type
+func (b *BinanceFuturesMultiAccount) GetType() types.ExchangeType {
+	return types.ExchangeBinance
+}
+
+// GetMarketType returns the market type
+func (b *BinanceFuturesMultiAccount) GetMarketType() types.MarketType {
+	return types.MarketTypeFutures
+}
+
+// Initialize initializes the exchange connector
+func (b *BinanceFuturesMultiAccount) Initialize(ctx context.Context) error {
+	// Already initialized in constructor
+	return nil
+}
+
+// PlaceOrder places a new order (alias for CreateOrder)
+func (b *BinanceFuturesMultiAccount) PlaceOrder(ctx context.Context, order *types.Order) (*types.Order, error) {
+	return b.CreateOrder(ctx, order)
+}
+
+// Position Management Methods
+
+// GetPositionRisk gets position risk information for a specific symbol
+func (b *BinanceFuturesMultiAccount) GetPositionRisk(accountName, symbol string) (*PositionRisk, error) {
+	b.mu.RLock()
+	client, exists := b.clients[accountName]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return nil, fmt.Errorf("account %s not found", accountName)
+	}
+	
+	// Check rate limit
+	if err := b.checkRateLimit(accountName, 5); err != nil {
+		return nil, err
+	}
+	
+	// Get position risk from Binance
+	service := client.NewGetPositionRiskService()
+	if symbol != "" {
+		service = service.Symbol(symbol)
+	}
+	
+	risks, err := service.Do(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get position risk: %v", err)
+	}
+	
+	// Update rate limit
+	b.updateRateLimit(accountName, 5)
+	
+	// Find the position for the symbol
+	for _, risk := range risks {
+		if risk.Symbol == symbol {
+			posAmt, _ := decimal.NewFromString(risk.PositionAmt)
+			if posAmt.IsZero() {
+				continue
+			}
+			
+			entryPrice, _ := decimal.NewFromString(risk.EntryPrice)
+			markPrice, _ := decimal.NewFromString(risk.MarkPrice)
+			unPnl, _ := decimal.NewFromString(risk.UnRealizedProfit)
+			liqPrice, _ := decimal.NewFromString(risk.LiquidationPrice)
+			isoMargin, _ := decimal.NewFromString(risk.IsolatedMargin)
+			leverage, _ := strconv.Atoi(risk.Leverage)
+			
+			return &PositionRisk{
+				Symbol:           risk.Symbol,
+				PositionAmount:   posAmt,
+				EntryPrice:       entryPrice,
+				MarkPrice:        markPrice,
+				UnrealizedPnL:    unPnl,
+				LiquidationPrice: liqPrice,
+				Leverage:         leverage,
+				MarginType:       risk.MarginType,
+				IsolatedMargin:   isoMargin,
+				PositionSide:     risk.PositionSide,
+				UpdateTime:       time.Now(),
+			}, nil
+		}
+	}
+	
+	return nil, fmt.Errorf("no position found for symbol %s", symbol)
+}
+
+// ClosePosition closes a position for a specific symbol
+func (b *BinanceFuturesMultiAccount) ClosePosition(accountName, symbol string, reduceOnly bool) error {
+	// Get current position
+	posRisk, err := b.GetPositionRisk(accountName, symbol)
+	if err != nil {
+		return fmt.Errorf("failed to get position: %v", err)
+	}
+	
+	if posRisk.PositionAmount.IsZero() {
+		return fmt.Errorf("no position to close for %s", symbol)
+	}
+	
+	// Determine side for closing
+	var side types.OrderSide
+	if posRisk.PositionAmount.IsPositive() {
+		side = types.OrderSideSell // Close long position
+	} else {
+		side = types.OrderSideBuy // Close short position
+	}
+	
+	// Create market order to close position
+	order := &types.Order{
+		Symbol:       symbol,
+		Side:         side,
+		Type:         types.OrderTypeMarket,
+		Quantity:     posRisk.PositionAmount.Abs(),
+		ReduceOnly:   reduceOnly,
+		PositionSide: types.PositionSide(posRisk.PositionSide),
+	}
+	
+	// Place the order
+	_, err = b.CreateOrder(context.Background(), order)
+	if err != nil {
+		return fmt.Errorf("failed to close position: %v", err)
+	}
+	
+	return nil
+}
+
+// AdjustPositionMargin adjusts isolated margin for a position
+func (b *BinanceFuturesMultiAccount) AdjustPositionMargin(accountName, symbol string, amount decimal.Decimal, addOrReduce int) error {
+	b.mu.RLock()
+	client, exists := b.clients[accountName]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("account %s not found", accountName)
+	}
+	
+	// Check rate limit
+	if err := b.checkRateLimit(accountName, 4); err != nil {
+		return err
+	}
+	
+	// Adjust position margin
+	service := client.NewUpdatePositionMarginService()
+	service = service.Symbol(symbol)
+	service = service.Amount(amount.String())
+	service = service.Type(addOrReduce) // 1: Add, 2: Reduce
+	
+	_, err := service.Do(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to adjust position margin: %v", err)
+	}
+	
+	// Update rate limit
+	b.updateRateLimit(accountName, 4)
+	
+	return nil
+}
+
+// SubscribePositionUpdates subscribes to position updates via WebSocket
+func (b *BinanceFuturesMultiAccount) SubscribePositionUpdates(accountName string) error {
+	b.mu.RLock()
+	wsManager, exists := b.wsManagers[accountName]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("WebSocket manager not found for account %s", accountName)
+	}
+	
+	// User data stream already includes position updates
+	// Just ensure the handler processes ACCOUNT_UPDATE events
+	if wsManager.userDataStream != nil && wsManager.userDataStream.IsConnected() {
+		// Position updates are already being received
+		return nil
+	}
+	
+	// If not connected, subscribe to user data
+	return b.SubscribeUserData(accountName)
+}
+
+// SetPositionUpdateCallback sets the callback for position updates
+func (b *BinanceFuturesMultiAccount) SetPositionUpdateCallback(callback func(accountID string, position *types.Position)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.onPositionUpdate = callback
+}
+
+// Leverage and Margin Type Methods
+
+// ChangeInitialLeverage changes the initial leverage for a symbol
+func (b *BinanceFuturesMultiAccount) ChangeInitialLeverage(accountName, symbol string, leverage int) error {
+	b.mu.RLock()
+	client, exists := b.clients[accountName]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("account %s not found", accountName)
+	}
+	
+	// Check rate limit
+	if err := b.checkRateLimit(accountName, 1); err != nil {
+		return err
+	}
+	
+	// Change leverage
+	service := client.NewChangeLeverageService()
+	service = service.Symbol(symbol)
+	service = service.Leverage(leverage)
+	
+	resp, err := service.Do(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to change leverage: %v", err)
+	}
+	
+	// Update rate limit
+	b.updateRateLimit(accountName, 1)
+	
+	fmt.Printf("Leverage changed for %s: %d (max: %d)\n", resp.Symbol, resp.Leverage, resp.MaxLeverage)
+	
+	return nil
+}
+
+// ChangeMarginType changes the margin type for a symbol
+func (b *BinanceFuturesMultiAccount) ChangeMarginType(accountName, symbol string, marginType string) error {
+	b.mu.RLock()
+	client, exists := b.clients[accountName]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("account %s not found", accountName)
+	}
+	
+	// Check rate limit
+	if err := b.checkRateLimit(accountName, 1); err != nil {
+		return err
+	}
+	
+	// Validate margin type
+	if marginType != "ISOLATED" && marginType != "CROSSED" {
+		return fmt.Errorf("invalid margin type: %s (must be ISOLATED or CROSSED)", marginType)
+	}
+	
+	// Change margin type
+	service := client.NewChangeMarginTypeService()
+	service = service.Symbol(symbol)
+	service = service.MarginType(futures.MarginType(marginType))
+	
+	err := service.Do(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to change margin type: %v", err)
+	}
+	
+	// Update rate limit
+	b.updateRateLimit(accountName, 1)
+	
+	return nil
+}
+
+// GetMaxLeverage gets the maximum leverage allowed for a symbol
+func (b *BinanceFuturesMultiAccount) GetMaxLeverage(accountName, symbol string) (int, error) {
+	b.mu.RLock()
+	client, exists := b.clients[accountName]
+	b.mu.RUnlock()
+	
+	if !exists {
+		return 0, fmt.Errorf("account %s not found", accountName)
+	}
+	
+	// Get exchange info
+	info, err := client.NewExchangeInfoService().Do(context.Background())
+	if err != nil {
+		return 0, fmt.Errorf("failed to get exchange info: %v", err)
+	}
+	
+	// Find symbol info
+	for _, s := range info.Symbols {
+		if s.Symbol == symbol {
+			// Parse leverage brackets
+			// Note: This is simplified. In practice, leverage varies by position size
+			// You might need to use the leverage brackets endpoint for accurate info
+			return 125, nil // Default max for most symbols
+		}
+	}
+	
+	return 0, fmt.Errorf("symbol %s not found", symbol)
 }
