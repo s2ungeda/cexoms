@@ -1,0 +1,148 @@
+{{- if .Values.security.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mexoms.fullname" . }}-network-policy
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "mexoms.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: {{ .Values.omsServer.service.httpPort }}
+    - protocol: TCP
+      port: {{ .Values.omsServer.service.grpcPort }}
+    - protocol: TCP
+      port: {{ .Values.omsServer.service.metricsPort }}
+  # Allow internal communication
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "mexoms.selectorLabels" . | nindent 10 }}
+  # Allow prometheus scraping
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Values.global.namespace }}
+      podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: {{ .Values.omsServer.service.metricsPort }}
+    - protocol: TCP
+      port: 8083
+    - protocol: TCP
+      port: 8084
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  # Allow internal communication
+  - to:
+    - podSelector:
+        matchLabels:
+          {{- include "mexoms.selectorLabels" . | nindent 10 }}
+  # Allow external HTTPS (for exchange APIs)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 169.254.169.254/32  # Block metadata service
+    ports:
+    - protocol: TCP
+      port: 443
+---
+# Network policy for database services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mexoms.fullname" . }}-database-policy
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}-postgresql
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "mexoms.selectorLabels" . | nindent 10 }}
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# Network policy for Redis
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mexoms.fullname" . }}-redis-policy
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}-redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "mexoms.selectorLabels" . | nindent 10 }}
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+# Network policy for NATS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mexoms.fullname" . }}-nats-policy
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: messaging
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}-nats
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "mexoms.selectorLabels" . | nindent 10 }}
+    ports:
+    - protocol: TCP
+      port: 4222  # Client port
+    - protocol: TCP
+      port: 6222  # Cluster port
+    - protocol: TCP
+      port: 8222  # Monitor port
+{{- end }}

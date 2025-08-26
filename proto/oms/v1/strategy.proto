@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package oms.v1;
+
+option go_package = "github.com/mExOms/oms/pkg/proto/oms/v1;omsv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "oms/v1/common.proto";
+
+// Strategy represents a trading strategy
+message Strategy {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    StrategyType type = 4;
+    StrategyStatus status = 5;
+    repeated string accounts = 6;  // Account IDs assigned to this strategy
+    StrategyConfig config = 7;
+    StrategyMetrics metrics = 8;
+    google.protobuf.Timestamp created_at = 9;
+    google.protobuf.Timestamp updated_at = 10;
+}
+
+// StrategyType represents the type of strategy
+enum StrategyType {
+    STRATEGY_TYPE_UNSPECIFIED = 0;
+    STRATEGY_TYPE_ARBITRAGE = 1;
+    STRATEGY_TYPE_MARKET_MAKING = 2;
+    STRATEGY_TYPE_TREND_FOLLOWING = 3;
+    STRATEGY_TYPE_MEAN_REVERSION = 4;
+    STRATEGY_TYPE_SCALPING = 5;
+    STRATEGY_TYPE_GRID_TRADING = 6;
+}
+
+// StrategyStatus represents strategy status
+enum StrategyStatus {
+    STRATEGY_STATUS_UNSPECIFIED = 0;
+    STRATEGY_STATUS_STOPPED = 1;
+    STRATEGY_STATUS_STARTING = 2;
+    STRATEGY_STATUS_RUNNING = 3;
+    STRATEGY_STATUS_PAUSING = 4;
+    STRATEGY_STATUS_PAUSED = 5;
+    STRATEGY_STATUS_ERROR = 6;
+}
+
+// StrategyConfig holds strategy-specific configuration
+message StrategyConfig {
+    // Common configuration
+    repeated string symbols = 1;
+    string max_position_per_symbol = 2;
+    string max_total_exposure = 3;
+    double risk_limit = 4;
+    int32 max_orders_per_second = 5;
+    
+    // Strategy-specific parameters as JSON
+    google.protobuf.Struct parameters = 6;
+}
+
+// StrategyMetrics represents strategy performance metrics
+message StrategyMetrics {
+    string total_pnl = 1;
+    string unrealized_pnl = 2;
+    string realized_pnl = 3;
+    double win_rate = 4;
+    double sharpe_ratio = 5;
+    double max_drawdown = 6;
+    int64 total_trades = 7;
+    int64 winning_trades = 8;
+    int64 losing_trades = 9;
+    double profit_factor = 10;
+    google.protobuf.Timestamp updated_at = 11;
+}
+
+// StrategyPosition represents aggregated position for a strategy
+message StrategyPosition {
+    string strategy_id = 1;
+    string symbol = 2;
+    string net_quantity = 3;
+    string total_value = 4;
+    string unrealized_pnl = 5;
+    map<string, string> account_quantities = 6;  // accountID -> quantity
+    google.protobuf.Timestamp updated_at = 7;
+}
+
+// Requests and Responses
+
+message CreateStrategyRequest {
+    string name = 1;
+    string description = 2;
+    StrategyType type = 3;
+    repeated string accounts = 4;
+    StrategyConfig config = 5;
+}
+
+message CreateStrategyResponse {
+    Strategy strategy = 1;
+}
+
+message GetStrategyRequest {
+    string strategy_id = 1;
+}
+
+message GetStrategyResponse {
+    Strategy strategy = 1;
+}
+
+message ListStrategiesRequest {
+    StrategyType type = 1;
+    StrategyStatus status = 2;
+    int32 page_size = 3;
+    string page_token = 4;
+}
+
+message ListStrategiesResponse {
+    repeated Strategy strategies = 1;
+    string next_page_token = 2;
+}
+
+message UpdateStrategyRequest {
+    string strategy_id = 1;
+    StrategyConfig config = 2;
+}
+
+message UpdateStrategyResponse {
+    Strategy strategy = 1;
+}
+
+message StartStrategyRequest {
+    string strategy_id = 1;
+}
+
+message StartStrategyResponse {
+    Strategy strategy = 1;
+}
+
+message StopStrategyRequest {
+    string strategy_id = 1;
+    string reason = 2;
+}
+
+message StopStrategyResponse {
+    Strategy strategy = 1;
+}
+
+message GetStrategyMetricsRequest {
+    string strategy_id = 1;
+}
+
+message GetStrategyMetricsResponse {
+    StrategyMetrics metrics = 1;
+}
+
+message GetStrategyPositionsRequest {
+    string strategy_id = 1;
+}
+
+message GetStrategyPositionsResponse {
+    repeated StrategyPosition positions = 1;
+}
+
+message AssignAccountsRequest {
+    string strategy_id = 1;
+    repeated string account_ids = 2;
+}
+
+message AssignAccountsResponse {
+    Strategy strategy = 1;
+}

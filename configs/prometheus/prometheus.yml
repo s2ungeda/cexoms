@@ -1,0 +1,87 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'oms-monitor'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load rules
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # OMS Application metrics
+  - job_name: 'oms-application'
+    static_configs:
+      - targets:
+          - 'oms-binance-spot:9102'
+          - 'oms-binance-futures:9102'
+          - 'oms-risk-manager:9102'
+          - 'oms-smart-router:9102'
+        labels:
+          group: 'oms-services'
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Node Exporter
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node_exporter:9100']
+        labels:
+          group: 'infrastructure'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Pushgateway
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+
+  # Jaeger metrics
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']
+        labels:
+          group: 'tracing'
+
+  # Elasticsearch metrics
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch:9200']
+        labels:
+          group: 'logging'
+    metrics_path: '/_prometheus/metrics'
+
+  # NATS metrics
+  - job_name: 'nats'
+    static_configs:
+      - targets: ['nats:8222']
+        labels:
+          group: 'messaging'
+    metrics_path: '/metrics'
+
+  # Redis metrics (using redis_exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis_exporter:9121']
+        labels:
+          group: 'cache'
+
+  # PostgreSQL metrics (using postgres_exporter)
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres_exporter:9187']
+        labels:
+          group: 'database'

@@ -1,0 +1,117 @@
+{
+  "index_patterns": ["oms-*"],
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "index.refresh_interval": "5s",
+    "index.codec": "best_compression",
+    "index.max_result_window": 50000
+  },
+  "mappings": {
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "exchange": {
+        "type": "keyword"
+      },
+      "market": {
+        "type": "keyword"
+      },
+      "service": {
+        "type": "keyword"
+      },
+      "environment": {
+        "type": "keyword"
+      },
+      "datacenter": {
+        "type": "keyword"
+      },
+      "level": {
+        "type": "keyword"
+      },
+      "message": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "order_id": {
+        "type": "keyword"
+      },
+      "order_type": {
+        "type": "keyword"
+      },
+      "order_side": {
+        "type": "keyword"
+      },
+      "order_status": {
+        "type": "keyword"
+      },
+      "order_latency_ms": {
+        "type": "float"
+      },
+      "symbol": {
+        "type": "keyword"
+      },
+      "price": {
+        "type": "float"
+      },
+      "quantity": {
+        "type": "float"
+      },
+      "volume_usd": {
+        "type": "float"
+      },
+      "error_type": {
+        "type": "keyword"
+      },
+      "error_message": {
+        "type": "text"
+      },
+      "ws_stream_type": {
+        "type": "keyword"
+      },
+      "ws_message_type": {
+        "type": "keyword"
+      },
+      "trace_id": {
+        "type": "keyword"
+      },
+      "span_id": {
+        "type": "keyword"
+      },
+      "parent_span_id": {
+        "type": "keyword"
+      },
+      "operation_name": {
+        "type": "keyword"
+      },
+      "span_duration_ms": {
+        "type": "float"
+      },
+      "container_name": {
+        "type": "keyword"
+      },
+      "container_id": {
+        "type": "keyword"
+      },
+      "metric_name": {
+        "type": "keyword"
+      },
+      "metric_value": {
+        "type": "float"
+      },
+      "tags": {
+        "type": "keyword"
+      },
+      "oms": {
+        "type": "object",
+        "enabled": false
+      }
+    }
+  }
+}

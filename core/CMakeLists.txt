@@ -9,13 +9,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Compiler flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -mavx2 -mfma")
 
 # Enable position independent code
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Find required packages
 find_package(Threads REQUIRED)
+
+# Find NUMA library (optional)
+find_library(NUMA_LIBRARY numa)
+if(NUMA_LIBRARY)
+    message(STATUS "Found NUMA library: ${NUMA_LIBRARY}")
+    add_definitions(-DHAS_NUMA)
+else()
+    message(STATUS "NUMA library not found, NUMA support disabled")
+endif()
 
 # Include directories
 include_directories(
@@ -31,6 +40,12 @@ set(LIB_SOURCES
     src/strategies/arbitrage_detector.cpp
     src/strategies/market_maker.cpp
     src/risk/risk_engine.cpp
+    src/risk/multi_account_risk_engine.cpp
+    src/risk/lock_free_risk_checker.cpp
+    src/account/multi_account_risk_engine_simple.cpp
+    src/performance/cpu_affinity.cpp
+    src/performance/memory_pool.cpp
+    src/performance/simd_operations.cpp
 )
 
 # Create static library
@@ -39,6 +54,11 @@ target_link_libraries(oms_core_lib
     Threads::Threads
     atomic
 )
+
+# Link NUMA library if found
+if(NUMA_LIBRARY)
+    target_link_libraries(oms_core_lib ${NUMA_LIBRARY})
+endif()
 
 # Create executable
 add_executable(oms-core ${CORE_SOURCES})
@@ -67,10 +87,66 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 # Testing
-option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
     enable_testing()
-    add_subdirectory(tests)
+    
+    # Multi-account risk engine test (simple)
+    add_executable(test_multi_account_risk_simple tests/test_multi_account_risk_simple.cpp)
+    target_link_libraries(test_multi_account_risk_simple
+        oms_core_lib
+        Threads::Threads
+        atomic
+    )
+    set_target_properties(test_multi_account_risk_simple PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    add_test(NAME MultiAccountRiskSimpleTest COMMAND test_multi_account_risk_simple)
+    
+    # Multi-account risk engine test (advanced)
+    add_executable(test_multi_account_risk_engine tests/test_multi_account_risk_engine.cpp)
+    target_link_libraries(test_multi_account_risk_engine
+        oms_core_lib
+        Threads::Threads
+        atomic
+    )
+    set_target_properties(test_multi_account_risk_engine PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    add_test(NAME MultiAccountRiskEngineTest COMMAND test_multi_account_risk_engine)
+    
+    # Performance optimization test
+    add_executable(test_performance_optimization tests/test_performance_optimization.cpp)
+    target_link_libraries(test_performance_optimization
+        oms_core_lib
+        Threads::Threads
+        atomic
+    )
+    if(NUMA_LIBRARY)
+        target_link_libraries(test_performance_optimization ${NUMA_LIBRARY})
+    endif()
+    set_target_properties(test_performance_optimization PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    add_test(NAME PerformanceOptimizationTest COMMAND test_performance_optimization)
+endif()
+
+# Examples
+option(BUILD_EXAMPLES "Build examples" ON)
+if(BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
+    # Performance demo example
+    add_executable(performance_demo examples/performance_demo.cpp)
+    target_link_libraries(performance_demo
+        oms_core_lib
+        Threads::Threads
+        atomic
+    )
+    if(NUMA_LIBRARY)
+        target_link_libraries(performance_demo ${NUMA_LIBRARY})
+    endif()
+    set_target_properties(performance_demo PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
 endif()
 
 # Benchmarks

@@ -1,0 +1,304 @@
+groups:
+  - name: mexoms_availability
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"mexoms-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 2 minutes"
+          runbook_url: https://wiki.mexoms.com/runbooks/service-down
+          
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job=~"mexoms-.*",status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_requests_total{job=~"mexoms-.*"}[5m])) by (job)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High error rate in {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.job }}"
+          dashboard: https://grafana.mexoms.com/d/errors/service-errors?var-service={{ $labels.job }}
+
+  - name: mexoms_performance
+    interval: 30s
+    rules:
+      - alert: HighOrderLatency
+        expr: |
+          histogram_quantile(0.99, 
+            sum(rate(order_processing_duration_seconds_bucket[5m])) by (le, exchange)
+          ) > 0.001
+        for: 5m
+        labels:
+          severity: warning
+          team: trading
+        annotations:
+          summary: "High order processing latency for {{ $labels.exchange }}"
+          description: "99th percentile latency is {{ $value | humanizeDuration }} (target: <1ms)"
+          
+      - alert: SlowRiskCheck
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(risk_check_duration_seconds_bucket[5m])) by (le)
+          ) > 0.00001
+        for: 5m
+        labels:
+          severity: warning
+          team: risk
+        annotations:
+          summary: "Risk checks are running slow"
+          description: "99th percentile risk check latency is {{ $value | humanizeDuration }} (target: <10μs)"
+          
+      - alert: HighGRPCLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(grpc_server_handling_seconds_bucket[5m])) by (le, grpc_method)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: api
+        annotations:
+          summary: "High gRPC latency for {{ $labels.grpc_method }}"
+          description: "99th percentile latency is {{ $value | humanizeDuration }}"
+
+  - name: mexoms_resource_usage
+    interval: 30s
+    rules:
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            container_memory_usage_bytes{pod=~"mexoms-.*"}
+            / 
+            container_spec_memory_limit_bytes{pod=~"mexoms-.*"}
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage in {{ $labels.pod }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} of limit"
+          
+      - alert: HighCPUUsage
+        expr: |
+          (
+            rate(container_cpu_usage_seconds_total{pod=~"mexoms-.*"}[5m])
+            /
+            container_spec_cpu_quota{pod=~"mexoms-.*"}
+          ) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage in {{ $labels.pod }}"
+          description: "CPU usage is {{ $value | humanizePercentage }} of limit"
+          
+      - alert: PodRestartingTooOften
+        expr: |
+          rate(kube_pod_container_status_restarts_total{pod=~"mexoms-.*"}[15m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod }} is restarting frequently"
+          description: "Pod has restarted {{ $value }} times in the last 15 minutes"
+
+  - name: mexoms_trading
+    interval: 10s
+    rules:
+      - alert: HighOrderRejectionRate
+        expr: |
+          (
+            sum(rate(orders_rejected_total[5m])) by (exchange, reason)
+            /
+            sum(rate(orders_total[5m])) by (exchange)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: trading
+        annotations:
+          summary: "High order rejection rate on {{ $labels.exchange }}"
+          description: "{{ $value | humanizePercentage }} of orders rejected due to {{ $labels.reason }}"
+          
+      - alert: LowFillRate
+        expr: |
+          (
+            sum(rate(orders_filled_total[5m])) by (exchange)
+            /
+            sum(rate(orders_placed_total[5m])) by (exchange)
+          ) < 0.7
+        for: 10m
+        labels:
+          severity: warning
+          team: trading
+        annotations:
+          summary: "Low fill rate on {{ $labels.exchange }}"
+          description: "Only {{ $value | humanizePercentage }} of orders are being filled"
+          
+      - alert: PositionLimitExceeded
+        expr: |
+          (
+            position_size_usd / position_limit_usd
+          ) > 0.95
+        labels:
+          severity: critical
+          team: risk
+        annotations:
+          summary: "Position limit nearly exceeded for {{ $labels.account }}"
+          description: "Position size is {{ $value | humanizePercentage }} of limit"
+
+  - name: mexoms_risk
+    interval: 10s
+    rules:
+      - alert: HighDailyLoss
+        expr: |
+          daily_pnl < daily_loss_limit * 0.8
+        labels:
+          severity: critical
+          team: risk
+        annotations:
+          summary: "Daily loss limit approaching for {{ $labels.account }}"
+          description: "Daily P&L: {{ $value }}, Limit: {{ $labels.daily_loss_limit }}"
+          
+      - alert: HighExposure
+        expr: |
+          (total_exposure_usd / account_balance_usd) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: risk
+        annotations:
+          summary: "High leverage detected for {{ $labels.account }}"
+          description: "Exposure is {{ $value }}x account balance"
+          
+      - alert: ConcentratedPositions
+        expr: |
+          max(position_size_usd) by (account) / sum(position_size_usd) by (account) > 0.3
+        for: 10m
+        labels:
+          severity: warning
+          team: risk
+        annotations:
+          summary: "Position concentration risk for {{ $labels.account }}"
+          description: "Largest position is {{ $value | humanizePercentage }} of total"
+
+  - name: mexoms_infrastructure
+    interval: 30s
+    rules:
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          (
+            pg_stat_database_numbackends{datname="mexoms"}
+            /
+            pg_settings_max_connections
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "{{ $value | humanizePercentage }} of connections in use"
+          
+      - alert: RedisMemoryHigh
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis using {{ $value | humanizePercentage }} of max memory"
+          
+      - alert: NATSStreamLag
+        expr: |
+          nats_consumer_lag_messages > 10000
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "NATS stream lag detected"
+          description: "Consumer {{ $labels.consumer }} has {{ $value }} messages lag"
+
+  - name: mexoms_exchange_connectivity
+    interval: 10s
+    rules:
+      - alert: ExchangeDisconnected
+        expr: exchange_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: trading
+        annotations:
+          summary: "Lost connection to {{ $labels.exchange }}"
+          description: "{{ $labels.exchange }} {{ $labels.market }} has been disconnected for 1 minute"
+          
+      - alert: ExchangeHighLatency
+        expr: exchange_ping_latency_ms > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: trading
+        annotations:
+          summary: "High latency to {{ $labels.exchange }}"
+          description: "Latency to {{ $labels.exchange }}: {{ $value }}ms"
+          
+      - alert: ExchangeRateLimitApproaching
+        expr: |
+          (exchange_rate_limit_used / exchange_rate_limit_total) > 0.8
+        for: 1m
+        labels:
+          severity: warning
+          team: trading
+        annotations:
+          summary: "Approaching rate limit on {{ $labels.exchange }}"
+          description: "{{ $value | humanizePercentage }} of rate limit used"
+
+  - name: mexoms_security
+    interval: 1m
+    rules:
+      - alert: UnauthorizedAPIAccess
+        expr: |
+          sum(rate(http_requests_total{status="401"}[5m])) by (path) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High rate of unauthorized access attempts"
+          description: "{{ $value }} unauthorized requests/sec to {{ $labels.path }}"
+          
+      - alert: APIKeyNearExpiry
+        expr: |
+          (api_key_expiry_timestamp - time()) < 7 * 24 * 3600
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "API key expiring soon for {{ $labels.exchange }}"
+          description: "API key expires in {{ $value | humanizeDuration }}"
+          
+      - alert: SuspiciousActivity
+        expr: |
+          sum(rate(security_events_total{severity="high"}[5m])) > 0
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Suspicious activity detected"
+          description: "{{ $value }} high severity security events/sec"

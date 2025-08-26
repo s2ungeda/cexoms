@@ -8,6 +8,8 @@ import "oms/v1/order.proto";
 import "oms/v1/position.proto";
 import "oms/v1/market_data.proto";
 import "oms/v1/auth.proto";
+import "oms/v1/account.proto";
+import "oms/v1/strategy.proto";
 
 // OrderService handles order operations
 service OrderService {
@@ -73,4 +75,64 @@ service AuthService {
     
     // Revoke API key
     rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse);
+}
+
+// AccountService handles multi-account operations
+service AccountService {
+    // Create a new account
+    rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse);
+    
+    // Get account details
+    rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+    
+    // List all accounts
+    rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+    
+    // Get account balance
+    rpc GetAccountBalance(GetAccountBalanceRequest) returns (GetAccountBalanceResponse);
+    
+    // Get account positions
+    rpc GetAccountPositions(GetAccountPositionsRequest) returns (GetAccountPositionsResponse);
+    
+    // Transfer between accounts
+    rpc Transfer(TransferRequest) returns (TransferResponse);
+    
+    // Get transfer history
+    rpc GetTransferHistory(GetTransferHistoryRequest) returns (GetTransferHistoryResponse);
+    
+    // Get account metrics
+    rpc GetAccountMetrics(GetAccountMetricsRequest) returns (GetAccountMetricsResponse);
+    
+    // Select best account for a strategy
+    rpc SelectAccount(SelectAccountRequest) returns (SelectAccountResponse);
+}
+
+// StrategyService handles strategy operations
+service StrategyService {
+    // Create a new strategy
+    rpc CreateStrategy(CreateStrategyRequest) returns (CreateStrategyResponse);
+    
+    // Get strategy details
+    rpc GetStrategy(GetStrategyRequest) returns (GetStrategyResponse);
+    
+    // List all strategies
+    rpc ListStrategies(ListStrategiesRequest) returns (ListStrategiesResponse);
+    
+    // Update strategy configuration
+    rpc UpdateStrategy(UpdateStrategyRequest) returns (UpdateStrategyResponse);
+    
+    // Start a strategy
+    rpc StartStrategy(StartStrategyRequest) returns (StartStrategyResponse);
+    
+    // Stop a strategy
+    rpc StopStrategy(StopStrategyRequest) returns (StopStrategyResponse);
+    
+    // Get strategy metrics
+    rpc GetStrategyMetrics(GetStrategyMetricsRequest) returns (GetStrategyMetricsResponse);
+    
+    // Get strategy positions
+    rpc GetStrategyPositions(GetStrategyPositionsRequest) returns (GetStrategyPositionsResponse);
+    
+    // Assign accounts to strategy
+    rpc AssignAccounts(AssignAccountsRequest) returns (AssignAccountsResponse);
 }

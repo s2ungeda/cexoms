@@ -1,0 +1,108 @@
+# Development environment values for mexoms
+
+global:
+  environment: development
+  domain: dev.mexoms.local
+
+# Reduced resources for development
+omsServer:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  autoscaling:
+    enabled: false
+
+binanceSpot:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+  autoscaling:
+    enabled: false
+
+binanceFutures:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+  autoscaling:
+    enabled: false
+
+# Use in-cluster databases for development
+postgresql:
+  primary:
+    persistence:
+      size: 10Gi
+      storageClass: "standard"
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+redis:
+  master:
+    persistence:
+      size: 1Gi
+      storageClass: "standard"
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+
+# Disable some production features
+security:
+  tls:
+    enabled: false
+  networkPolicy:
+    enabled: false
+
+vault:
+  enabled: false
+
+backup:
+  enabled: false
+
+# Simple ingress for local development
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: api.dev.mexoms.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: oms-server-service
+          port: 8080
+  tls: []
+
+# Enable port forwarding helper
+monitor:
+  enabled: true
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "100m"

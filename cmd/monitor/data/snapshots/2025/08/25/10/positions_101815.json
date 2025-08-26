@@ -1,0 +1,17 @@
+{
+  "timestamp": "2025-08-25T10:18:15.521062648+09:00",
+  "positions": null,
+  "metrics": {
+    "avg_calc_time_ns": 0,
+    "avg_calc_time_us": 0,
+    "max_leverage": "0",
+    "position_count": 0,
+    "reads_count": 543,
+    "realized_pnl": "0",
+    "total_margin_used": "0",
+    "total_pnl": "0",
+    "total_value": "0",
+    "unrealized_pnl": "0",
+    "updates_count": 0
+  }
+}

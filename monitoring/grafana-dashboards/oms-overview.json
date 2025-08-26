@@ -1,0 +1,317 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "mExOms Overview",
+    "tags": ["mexoms", "overview"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "5s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+        "id": 1,
+        "type": "stat",
+        "title": "Total Orders/min",
+        "targets": [
+          {
+            "expr": "sum(rate(orders_total[1m]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 1000 },
+                { "color": "red", "value": 5000 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+        "id": 2,
+        "type": "stat",
+        "title": "Order Success Rate",
+        "targets": [
+          {
+            "expr": "sum(rate(orders_filled_total[5m])) / sum(rate(orders_placed_total[5m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 80 },
+                { "color": "green", "value": 95 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+        "id": 3,
+        "type": "stat",
+        "title": "Active Positions",
+        "targets": [
+          {
+            "expr": "sum(active_positions_total)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 100 },
+                { "color": "red", "value": 500 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+        "id": 4,
+        "type": "stat",
+        "title": "Total P&L Today",
+        "targets": [
+          {
+            "expr": "sum(daily_pnl)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": -10000 },
+                { "color": "yellow", "value": 0 },
+                { "color": "green", "value": 10000 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+        "id": 5,
+        "type": "timeseries",
+        "title": "Order Processing Latency",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(order_processing_duration_seconds_bucket[5m])) by (le, exchange))",
+            "legendFormat": "p99 {{ exchange }}",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(order_processing_duration_seconds_bucket[5m])) by (le, exchange))",
+            "legendFormat": "p95 {{ exchange }}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 6
+          }
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+        "id": 6,
+        "type": "timeseries",
+        "title": "Risk Check Performance",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(risk_check_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(risk_checks_total[5m])",
+            "legendFormat": "checks/sec",
+            "refId": "B",
+            "yaxis": 2
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 9
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "checks/sec" },
+              "properties": [
+                { "id": "unit", "value": "ops" }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+        "id": 7,
+        "type": "table",
+        "title": "Account Status",
+        "targets": [
+          {
+            "expr": "sum by (account) (account_balance_usd)",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          },
+          {
+            "expr": "sum by (account) (daily_pnl)",
+            "format": "table",
+            "instant": true,
+            "refId": "B"
+          },
+          {
+            "expr": "sum by (account) (active_positions_total)",
+            "format": "table",
+            "instant": true,
+            "refId": "C"
+          },
+          {
+            "expr": "sum by (account) (total_exposure_usd)",
+            "format": "table",
+            "instant": true,
+            "refId": "D"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge",
+            "options": {}
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true
+              },
+              "indexByName": {},
+              "renameByName": {
+                "account": "Account",
+                "Value #A": "Balance",
+                "Value #B": "Daily P&L",
+                "Value #C": "Positions",
+                "Value #D": "Exposure"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "Balance" },
+              "properties": [
+                { "id": "unit", "value": "currencyUSD" },
+                { "id": "decimals", "value": 2 }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Daily P&L" },
+              "properties": [
+                { "id": "unit", "value": "currencyUSD" },
+                { "id": "decimals", "value": 2 },
+                { "id": "custom.displayMode", "value": "color-background" },
+                { "id": "thresholds", "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": -1000 },
+                    { "color": "yellow", "value": 0 },
+                    { "color": "green", "value": 1000 }
+                  ]
+                }}
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Exposure" },
+              "properties": [
+                { "id": "unit", "value": "currencyUSD" },
+                { "id": "decimals", "value": 0 }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+        "id": 8,
+        "type": "piechart",
+        "title": "Orders by Exchange",
+        "targets": [
+          {
+            "expr": "sum by (exchange) (rate(orders_total[5m]))",
+            "legendFormat": "{{ exchange }}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "right"
+          },
+          "pieType": "donut",
+          "displayLabels": ["name", "percent"]
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+        "id": 9,
+        "type": "logs",
+        "title": "Recent Errors",
+        "targets": [
+          {
+            "expr": "{job=~\"mexoms-.*\"} |~ \"ERROR|CRITICAL|FATAL\"",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "showCommonLabels": false,
+          "sortOrder": "Descending"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,136 @@
+{{- if .Values.backup.enabled -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "mexoms.fullname" . }}-backup
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "mexoms.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "mexoms.serviceAccountName" . }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            fsGroup: 1001
+          initContainers:
+          - name: wait-for-postgres
+            image: busybox:latest
+            command: ['sh', '-c']
+            args:
+              - until nc -zv {{ include "mexoms.postgresql.fullname" . }} 5432; do echo waiting for postgres; sleep 2; done;
+          containers:
+          - name: postgres-backup
+            image: postgres:15-alpine
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Starting backup at $(date)"
+              
+              # Create backup
+              export PGPASSWORD=$POSTGRES_PASSWORD
+              BACKUP_NAME="mexoms-$(date +%Y%m%d-%H%M%S).sql"
+              
+              pg_dump -h {{ include "mexoms.postgresql.fullname" . }} \
+                      -U {{ .Values.postgresql.auth.username }} \
+                      -d {{ .Values.postgresql.auth.database }} \
+                      -f "/backup/$BACKUP_NAME"
+              
+              # Compress backup
+              gzip "/backup/$BACKUP_NAME"
+              
+              # Upload to S3 (if configured)
+              {{- if .Values.backup.s3.enabled }}
+              aws s3 cp "/backup/$BACKUP_NAME.gz" \
+                  "s3://{{ .Values.backup.s3.bucket }}/{{ .Values.backup.s3.prefix }}/$BACKUP_NAME.gz"
+              {{- end }}
+              
+              # Clean old backups
+              find /backup -name "*.sql.gz" -mtime +{{ .Values.backup.retention }} -delete
+              
+              echo "Backup completed successfully"
+            env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mexoms.fullname" . }}-secrets
+                  key: postgres-password
+            {{- if .Values.backup.s3.enabled }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mexoms.fullname" . }}-backup-s3
+                  key: access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mexoms.fullname" . }}-backup-s3
+                  key: secret-access-key
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.backup.s3.region }}
+            {{- end }}
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
+          - name: redis-backup
+            image: redis:7-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Starting Redis backup at $(date)"
+              
+              # Create backup
+              redis-cli -h {{ include "mexoms.redis.fullname" . }} \
+                        -a "$REDIS_PASSWORD" \
+                        --rdb /backup/redis-$(date +%Y%m%d-%H%M%S).rdb
+              
+              echo "Redis backup completed"
+            env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mexoms.fullname" . }}-secrets
+                  key: redis-password
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
+          volumes:
+          - name: backup
+            persistentVolumeClaim:
+              claimName: {{ include "mexoms.fullname" . }}-backup-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mexoms.fullname" . }}-backup-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.backup.storageSize | default "50Gi" }}
+  {{- if .Values.backup.storageClass }}
+  storageClassName: {{ .Values.backup.storageClass }}
+  {{- end }}
+{{- end }}

@@ -39,7 +39,27 @@ enum Permission {
     PERMISSION_WRITE_ORDERS = 2;
     PERMISSION_READ_POSITIONS = 3;
     PERMISSION_READ_MARKET_DATA = 4;
+    PERMISSION_READ_ACCOUNTS = 5;
+    PERMISSION_MANAGE_ACCOUNTS = 6;
+    PERMISSION_TRANSFER_FUNDS = 7;
+    PERMISSION_READ_STRATEGIES = 8;
+    PERMISSION_MANAGE_STRATEGIES = 9;
     PERMISSION_ADMIN = 100;
+}
+
+// AccountPermission represents permission for specific account
+message AccountPermission {
+    string account_id = 1;
+    repeated Permission permissions = 2;
+}
+
+// RateLimitConfig defines rate limiting rules
+message RateLimitConfig {
+    int32 requests_per_second = 1;
+    int32 requests_per_minute = 2;
+    int32 requests_per_hour = 3;
+    int32 order_weight = 4;  // Weight for order operations
+    int32 query_weight = 5;  // Weight for query operations
 }
 
 // API key management
@@ -47,15 +67,21 @@ message APIKey {
     string id = 1;
     string name = 2;
     repeated Permission permissions = 3;
-    Timestamp created_at = 4;
-    Timestamp last_used = 5;
-    bool is_active = 6;
+    repeated AccountPermission account_permissions = 4;  // Per-account permissions
+    RateLimitConfig rate_limit = 5;
+    Timestamp created_at = 6;
+    Timestamp last_used = 7;
+    bool is_active = 8;
+    string ip_whitelist = 9;  // Comma-separated IP addresses
 }
 
 // CreateAPIKeyRequest
 message CreateAPIKeyRequest {
     string name = 1;
     repeated Permission permissions = 2;
+    repeated AccountPermission account_permissions = 3;
+    RateLimitConfig rate_limit = 4;
+    string ip_whitelist = 5;
 }
 
 // CreateAPIKeyResponse

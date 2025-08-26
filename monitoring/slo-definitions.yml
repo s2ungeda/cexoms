@@ -1,0 +1,190 @@
+# Service Level Objectives (SLOs) for mExOms
+
+slos:
+  # Order Processing SLOs
+  - name: order_processing_availability
+    description: "Order processing service should be available"
+    objective: 99.95
+    error_budget_burn_rate_threshold: 1
+    queries:
+      - type: availability
+        success: |
+          sum(rate(http_requests_total{job="mexoms-oms-server",status!~"5.."}[5m]))
+        total: |
+          sum(rate(http_requests_total{job="mexoms-oms-server"}[5m]))
+          
+  - name: order_processing_latency
+    description: "99% of orders processed within 1ms"
+    objective: 99
+    queries:
+      - type: latency
+        query: |
+          histogram_quantile(0.99, 
+            sum(rate(order_processing_duration_seconds_bucket[5m])) by (le)
+          ) < 0.001
+          
+  - name: risk_check_latency
+    description: "99.9% of risk checks completed within 10μs"
+    objective: 99.9
+    queries:
+      - type: latency
+        query: |
+          histogram_quantile(0.999,
+            sum(rate(risk_check_duration_seconds_bucket[5m])) by (le)
+          ) < 0.00001
+
+  # Exchange Connectivity SLOs
+  - name: exchange_connectivity
+    description: "Exchange connections should be maintained"
+    objective: 99.9
+    queries:
+      - type: availability
+        success: |
+          sum(exchange_connected == 1) by (exchange)
+        total: |
+          count(exchange_connected) by (exchange)
+          
+  - name: exchange_latency
+    description: "Exchange latency should be below 50ms"
+    objective: 95
+    queries:
+      - type: threshold
+        query: |
+          avg(exchange_ping_latency_ms) by (exchange) < 50
+
+  # API Gateway SLOs
+  - name: grpc_api_availability
+    description: "gRPC API should be available"
+    objective: 99.9
+    error_budget_burn_rate_threshold: 2
+    queries:
+      - type: availability
+        success: |
+          sum(rate(grpc_server_handled_total{grpc_code!="Unknown",grpc_code!="Internal"}[5m]))
+        total: |
+          sum(rate(grpc_server_started_total[5m]))
+          
+  - name: grpc_api_latency
+    description: "95% of gRPC calls complete within 100ms"
+    objective: 95
+    queries:
+      - type: latency
+        query: |
+          histogram_quantile(0.95,
+            sum(rate(grpc_server_handling_seconds_bucket[5m])) by (le, grpc_method)
+          ) < 0.1
+
+  # Data Integrity SLOs
+  - name: order_fill_accuracy
+    description: "Orders should be filled at expected prices"
+    objective: 99.5
+    queries:
+      - type: custom
+        query: |
+          (
+            sum(rate(orders_filled_within_tolerance_total[5m]))
+            /
+            sum(rate(orders_filled_total[5m]))
+          ) * 100
+          
+  - name: position_accuracy
+    description: "Position calculations should be accurate"
+    objective: 99.99
+    queries:
+      - type: custom
+        query: |
+          (1 - sum(rate(position_discrepancy_total[5m])) / sum(rate(position_updates_total[5m]))) * 100
+
+  # Infrastructure SLOs
+  - name: database_availability
+    description: "Database should be available"
+    objective: 99.95
+    queries:
+      - type: availability
+        success: |
+          pg_up == 1
+        total: |
+          count(pg_up)
+          
+  - name: message_queue_latency
+    description: "NATS message processing latency"
+    objective: 99
+    queries:
+      - type: latency
+        query: |
+          histogram_quantile(0.99,
+            sum(rate(nats_consumer_processing_time_bucket[5m])) by (le, stream)
+          ) < 0.01
+
+  # Security SLOs
+  - name: authentication_success_rate
+    description: "Valid authentication requests should succeed"
+    objective: 99.9
+    queries:
+      - type: availability
+        success: |
+          sum(rate(auth_requests_total{status="success"}[5m]))
+        total: |
+          sum(rate(auth_requests_total{legitimate="true"}[5m]))
+          
+  - name: security_incident_response
+    description: "Security incidents should be detected within 5 minutes"
+    objective: 99
+    queries:
+      - type: custom
+        query: |
+          (
+            sum(security_incident_detection_time_seconds < 300)
+            /
+            count(security_incident_detection_time_seconds)
+          ) * 100
+
+# Error Budget Policies
+error_budget_policies:
+  - name: feature_freeze
+    description: "Stop new feature development when error budget < 25%"
+    threshold: 0.25
+    actions:
+      - notify_team: platform
+      - block_deployments: non-critical
+      
+  - name: incident_review
+    description: "Mandatory incident review when error budget < 50%"
+    threshold: 0.50
+    actions:
+      - notify_team: all
+      - require_postmortem: true
+      
+  - name: automated_rollback
+    description: "Auto-rollback deployments burning >10% error budget/hour"
+    burn_rate: 10
+    window: 1h
+    actions:
+      - auto_rollback: true
+      - page_oncall: true
+
+# Multi-window Multi-burn-rate Alerts
+burn_rate_rules:
+  - name: fast_burn
+    windows:
+      - duration: 5m
+        burn_rate: 14.4  # 1% budget in 1 hour
+      - duration: 1h
+        burn_rate: 14.4
+    severity: page
+    
+  - name: slow_burn
+    windows:
+      - duration: 30m
+        burn_rate: 7.2   # 1% budget in 2 hours
+      - duration: 6h
+        burn_rate: 7.2
+    severity: ticket
+    
+  - name: medium_burn
+    windows:
+      - duration: 2h
+        burn_rate: 3.6   # 1% budget in 4 hours
+      - duration: 24h
+        burn_rate: 3.6
+    severity: warning

@@ -1,0 +1,124 @@
+# Vault Configuration for Multi-Account API Key Management
+vault:
+  # HashiCorp Vault server address
+  address: "http://localhost:8200"
+  
+  # Vault authentication token
+  # In production, use environment variable: VAULT_TOKEN
+  token: "${VAULT_TOKEN}"
+  
+  # Mount path for secrets engine
+  mount_path: "secret"
+  
+  # Key cache TTL
+  ttl: 5m
+  
+  # Key rotation period (30 days)
+  rotation_period: 720h
+  
+  # Retry configuration
+  retry_attempts: 3
+  retry_delay: 1s
+
+# API Key paths structure
+# Pattern: secret/exchanges/{exchange}_{market}_{account}
+# Examples:
+#   - secret/exchanges/binance_spot_main
+#   - secret/exchanges/binance_spot_sub1
+#   - secret/exchanges/binance_futures_sub2
+#   - secret/exchanges/bybit_spot_main
+#   - secret/exchanges/okx_futures_sub1
+
+# Key rotation schedule
+key_rotation:
+  # Enable automatic key rotation
+  enabled: true
+  
+  # Check rotation daily
+  check_interval: 24h
+  
+  # Days before expiration to rotate
+  days_before_expiry: 7
+  
+  # Account priority for rotation
+  # Rotate sub-accounts first to minimize main account disruption
+  priority_order:
+    - "sub*"    # All sub-accounts
+    - "main"    # Main account last
+
+# Encryption settings
+encryption:
+  # Local encryption for additional security
+  enabled: true
+  
+  # AES-256 encryption key
+  # In production, use environment variable: ENCRYPTION_KEY
+  key: "${ENCRYPTION_KEY}"
+  
+  # Key derivation function
+  kdf: "pbkdf2"
+  iterations: 100000
+
+# Account key management
+accounts:
+  # Maximum number of API keys per account
+  max_keys_per_account: 3
+  
+  # Key permissions template
+  default_permissions:
+    spot:
+      - "read"
+      - "trade"
+    futures:
+      - "read"
+      - "trade"
+      - "position"
+  
+  # Account-specific overrides
+  overrides:
+    binance_spot_main:
+      permissions:
+        - "read"
+        - "trade"
+        - "transfer"  # Main account can transfer
+    binance_spot_sub_mm:
+      permissions:
+        - "read"
+        - "trade"
+      max_keys: 2  # Market maker needs backup key
+
+# Security policies
+security:
+  # IP whitelist per account
+  ip_whitelist:
+    enabled: true
+    default:
+      - "0.0.0.0/0"  # Development only
+    production:
+      - "${SERVER_IP}/32"
+  
+  # Key usage monitoring
+  monitoring:
+    # Alert on unusual activity
+    alert_threshold: 1000  # requests per minute
+    
+    # Temporary disable after alerts
+    auto_disable: true
+    disable_duration: 5m
+
+# Audit logging
+audit:
+  # Log all key operations
+  enabled: true
+  
+  # Audit log path
+  log_path: "/data/audit/vault/"
+  
+  # Operations to log
+  operations:
+    - "create"
+    - "read"
+    - "update"
+    - "delete"
+    - "rotate"
+    - "list"

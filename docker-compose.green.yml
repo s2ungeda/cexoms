@@ -1,0 +1,64 @@
+version: '3.8'
+
+# Green environment for blue-green deployment
+
+services:
+  # OMS Server (Green)
+  oms-server-green:
+    extends:
+      file: docker-compose.prod.yml
+      service: oms-server
+    container_name: mexoms-server-green
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.oms-green.rule=Host(`oms.mexoms.com`) && Headers(`X-Color`, `green`)"
+      - "traefik.http.services.oms-green.loadbalancer.server.port=8080"
+      - "color=green"
+    networks:
+      - oms-network-green
+
+  # Binance Spot (Green)
+  binance-spot-green:
+    extends:
+      file: docker-compose.prod.yml
+      service: binance-spot
+    container_name: mexoms-binance-spot-green
+    labels:
+      - "color=green"
+    networks:
+      - oms-network-green
+    depends_on:
+      - oms-server-green
+
+  # Binance Futures (Green)
+  binance-futures-green:
+    extends:
+      file: docker-compose.prod.yml
+      service: binance-futures
+    container_name: mexoms-binance-futures-green
+    labels:
+      - "color=green"
+    networks:
+      - oms-network-green
+    depends_on:
+      - oms-server-green
+
+  # Monitor (Green)
+  monitor-green:
+    extends:
+      file: docker-compose.prod.yml
+      service: monitor
+    container_name: mexoms-monitor-green
+    labels:
+      - "color=green"
+    networks:
+      - oms-network-green
+    depends_on:
+      - oms-server-green
+
+networks:
+  oms-network-green:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16

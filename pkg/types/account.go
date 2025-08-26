@@ -18,12 +18,13 @@ const (
 // Account represents a trading account across exchanges
 type Account struct {
 	ID          string          `json:"id"`
-	Exchange    string          `json:"exchange"`
-	Type        AccountType     `json:"type"`
-	ParentID    string          `json:"parent_id,omitempty"`
 	Name        string          `json:"name"`
+	Type        AccountType     `json:"type"`
+	Exchange    string          `json:"exchange"`
+	Market      MarketType      `json:"market"`
+	Parent      string          `json:"parent,omitempty"`
 	Strategy    string          `json:"strategy,omitempty"`
-	APIKeyPath  string          `json:"api_key_path"`
+	VaultPath   string          `json:"vault_path,omitempty"`
 	
 	// Trading permissions
 	SpotEnabled    bool `json:"spot_enabled"`
@@ -31,10 +32,10 @@ type Account struct {
 	MarginEnabled  bool `json:"margin_enabled"`
 	
 	// Risk limits
-	MaxBalanceUSDT    decimal.Decimal `json:"max_balance_usdt"`
-	MaxPositionUSDT   decimal.Decimal `json:"max_position_usdt"`
-	MaxLeverage       int             `json:"max_leverage"`
-	DailyLossLimit    decimal.Decimal `json:"daily_loss_limit"`
+	MaxBalance     decimal.Decimal `json:"max_balance"`
+	MaxPositionUSDT decimal.Decimal `json:"max_position_usdt"`
+	MaxLeverage     int             `json:"max_leverage"`
+	DailyLossLimit  decimal.Decimal `json:"daily_loss_limit"`
 	
 	// Rate limiting
 	RateLimitWeight   int `json:"rate_limit_weight"`
@@ -70,11 +71,15 @@ func (a *Account) GetBalance() (*AccountBalance, error) {
 
 // AccountBalance represents account balance information
 type AccountBalance struct {
-	AccountID string                     `json:"account_id"`
-	Exchange  string                     `json:"exchange"`
-	Balances  map[string]*Balance        `json:"balances"`
-	TotalUSDT decimal.Decimal            `json:"total_usdt"`
-	UpdatedAt time.Time                  `json:"updated_at"`
+	AccountID     string                     `json:"account_id"`
+	Exchange      string                     `json:"exchange"`
+	Balances      map[string]*Balance        `json:"balances"`
+	TotalUSDT     decimal.Decimal            `json:"total_usdt"`
+	Available     decimal.Decimal            `json:"available"`
+	Locked        decimal.Decimal            `json:"locked"`
+	TotalExposure decimal.Decimal            `json:"total_exposure"`
+	UpdateTime    time.Time                  `json:"update_time"`
+	UpdatedAt     time.Time                  `json:"updated_at"`
 }
 
 // AccountPosition represents positions for an account
@@ -204,4 +209,36 @@ type RebalanceRules struct {
 	TargetAllocations map[string]decimal.Decimal `json:"target_allocations"`
 	Threshold         decimal.Decimal          `json:"threshold"`
 	DryRun            bool                     `json:"dry_run"`
+}
+
+// CreateAccountRequest represents a request to create a new account
+type CreateAccountRequest struct {
+	Name           string                 `json:"name"`
+	Type           AccountType            `json:"type"`
+	Exchange       string                 `json:"exchange"`
+	Market         MarketType             `json:"market"`
+	Parent         string                 `json:"parent,omitempty"`
+	Strategy       string                 `json:"strategy,omitempty"`
+	SpotEnabled    bool                   `json:"spot_enabled"`
+	FuturesEnabled bool                   `json:"futures_enabled"`
+	MaxBalance     decimal.Decimal        `json:"max_balance"`
+	MaxLeverage    int                    `json:"max_leverage"`
+	APIKey         string                 `json:"api_key,omitempty"`
+	SecretKey      string                 `json:"secret_key,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// AccountTransferRequest represents a request to transfer assets between accounts
+type AccountTransferRequest struct {
+	FromAccountID string          `json:"from_account_id"`
+	ToAccountID   string          `json:"to_account_id"`
+	Asset         string          `json:"asset"`
+	Amount        decimal.Decimal `json:"amount"`
+}
+
+// APICredentials holds API key information for an account
+type APICredentials struct {
+	APIKey     string `json:"api_key"`
+	SecretKey  string `json:"secret_key"`
+	Passphrase string `json:"passphrase,omitempty"` // For exchanges that require it
 }

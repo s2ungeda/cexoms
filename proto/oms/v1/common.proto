@@ -51,6 +51,14 @@ enum Market {
     MARKET_FUTURES = 2;
 }
 
+// PositionSide represents the side of a position
+enum PositionSide {
+    POSITION_SIDE_UNSPECIFIED = 0;
+    POSITION_SIDE_LONG = 1;
+    POSITION_SIDE_SHORT = 2;
+    POSITION_SIDE_BOTH = 3;
+}
+
 // Timestamp message
 message Timestamp {
     int64 seconds = 1;

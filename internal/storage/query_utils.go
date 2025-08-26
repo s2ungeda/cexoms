@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // QueryUtils provides utilities for querying storage files using system tools
@@ -281,6 +282,3 @@ type ReportSection struct {
 	Title string                 `json:"title"`
 	Data  map[string]interface{} `json:"data"`
 }
-
-// Add missing import
-import "time"

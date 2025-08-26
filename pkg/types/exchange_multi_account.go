@@ -71,18 +71,7 @@ type TradingPermissions struct {
 	WithdrawalLimit  decimal.Decimal `json:"withdrawal_limit,omitempty"`
 }
 
-// AccountTransferRequest represents a transfer request between accounts
-type AccountTransferRequest struct {
-	FromAccountID   string          `json:"from_account_id"`
-	ToAccountID     string          `json:"to_account_id"`
-	Asset           string          `json:"asset"`
-	Amount          decimal.Decimal `json:"amount"`
-	
-	// Optional fields
-	FromAccountType string `json:"from_account_type,omitempty"` // SPOT, FUTURES, etc.
-	ToAccountType   string `json:"to_account_type,omitempty"`
-	TransferID      string `json:"transfer_id,omitempty"`       // Client transfer ID
-}
+// Note: AccountTransferRequest is defined in account.go
 
 // AccountTransferResponse represents the response of a transfer
 type AccountTransferResponse struct {

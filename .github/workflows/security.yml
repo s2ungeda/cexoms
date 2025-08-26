@@ -1,0 +1,242 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+
+jobs:
+  # Container image scanning
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [oms-server, binance-spot, binance-futures, monitor]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: |
+        docker build -f Dockerfile.${{ matrix.image }} -t mexoms/${{ matrix.image }}:scan .
+        
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: mexoms/${{ matrix.image }}:scan
+        format: 'sarif'
+        output: 'trivy-${{ matrix.image }}.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-${{ matrix.image }}.sarif'
+        category: container-${{ matrix.image }}
+        
+    - name: Run Grype vulnerability scanner
+      uses: anchore/scan-action@v3
+      with:
+        image: mexoms/${{ matrix.image }}:scan
+        fail-build: true
+        severity-cutoff: high
+        
+    - name: Run Docker Bench Security
+      run: |
+        docker run --rm --net host --pid host --userns host --cap-add audit_control \
+          -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \
+          -v /etc:/etc:ro \
+          -v /usr/bin/containerd:/usr/bin/containerd:ro \
+          -v /usr/bin/docker-containerd:/usr/bin/docker-containerd:ro \
+          -v /usr/bin/docker-containerd-ctr:/usr/bin/docker-containerd-ctr:ro \
+          -v /usr/bin/docker-containerd-shim:/usr/bin/docker-containerd-shim:ro \
+          -v /usr/bin/docker-runc:/usr/bin/docker-runc:ro \
+          -v /usr/lib/systemd:/usr/lib/systemd:ro \
+          -v /var/lib:/var/lib:ro \
+          -v /var/run/docker.sock:/var/run/docker.sock:ro \
+          docker/docker-bench-security
+
+  # Dependency scanning
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Run Nancy (Go dependency scan)
+      run: |
+        go list -json -deps ./... | nancy sleuth
+        
+    - name: Run go-licenses
+      run: |
+        go install github.com/google/go-licenses@latest
+        go-licenses check ./...
+        
+    - name: OWASP Dependency Check
+      uses: jeremylong/DependencyCheck-Action@main
+      with:
+        project: 'mExOms'
+        path: '.'
+        format: 'ALL'
+        args: >
+          --enableRetired
+          --enableExperimental
+        
+    - name: Upload OWASP results
+      uses: actions/upload-artifact@v3
+      with:
+        name: dependency-check-report
+        path: reports/
+
+  # SAST (Static Application Security Testing)
+  sast:
+    name: SAST Scanning
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: go, javascript
+        
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v2
+      
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      
+    - name: Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/golang
+          p/docker
+          p/kubernetes
+          
+    - name: Run Checkov
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: .
+        framework: all
+        output_format: sarif
+        output_file_path: checkov.sarif
+        
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: checkov.sarif
+
+  # Secret scanning
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for secret scanning
+        
+    - name: Run Gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Run TruffleHog
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        
+  # Kubernetes security
+  k8s-security:
+    name: Kubernetes Security
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Kubesec scan
+      run: |
+        for file in k8s/*.yaml; do
+          echo "Scanning $file"
+          docker run -v $(pwd):/app kubesec/kubesec:latest scan /app/$file
+        done
+        
+    - name: Run Polaris
+      run: |
+        wget -O polaris.tar.gz https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_linux_amd64.tar.gz
+        tar -xzf polaris.tar.gz
+        ./polaris audit --audit-path ./k8s/ --format=json > polaris-report.json
+        
+    - name: Upload Polaris report
+      uses: actions/upload-artifact@v3
+      with:
+        name: polaris-report
+        path: polaris-report.json
+        
+    - name: Run kube-score
+      run: |
+        wget -O kube-score https://github.com/zegl/kube-score/releases/latest/download/kube-score_linux_amd64
+        chmod +x kube-score
+        find k8s -name "*.yaml" -exec ./kube-score score {} \;
+
+  # Security report
+  security-report:
+    name: Security Report
+    runs-on: ubuntu-latest
+    needs: [container-scan, dependency-scan, sast, secret-scan, k8s-security]
+    if: always()
+    steps:
+    - name: Create security summary
+      run: |
+        echo "# Security Scan Summary" > security-summary.md
+        echo "Date: $(date)" >> security-summary.md
+        echo "Commit: ${{ github.sha }}" >> security-summary.md
+        echo "" >> security-summary.md
+        echo "## Scan Results" >> security-summary.md
+        echo "- Container Scan: ${{ needs.container-scan.result }}" >> security-summary.md
+        echo "- Dependency Scan: ${{ needs.dependency-scan.result }}" >> security-summary.md
+        echo "- SAST: ${{ needs.sast.result }}" >> security-summary.md
+        echo "- Secret Scan: ${{ needs.secret-scan.result }}" >> security-summary.md
+        echo "- K8s Security: ${{ needs.k8s-security.result }}" >> security-summary.md
+        
+    - name: Upload security summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-summary
+        path: security-summary.md
+        
+    - name: Comment PR with security status
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const summary = `
+          ## 🔒 Security Scan Summary
+          
+          | Scan Type | Status |
+          |-----------|---------|
+          | Container Security | ${{ needs.container-scan.result }} |
+          | Dependency Scan | ${{ needs.dependency-scan.result }} |
+          | SAST | ${{ needs.sast.result }} |
+          | Secret Scan | ${{ needs.secret-scan.result }} |
+          | K8s Security | ${{ needs.k8s-security.result }} |
+          
+          View detailed reports in the [Actions tab](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: summary
+          });

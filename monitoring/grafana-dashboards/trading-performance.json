@@ -1,0 +1,283 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Trading Performance",
+    "tags": ["mexoms", "trading", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "id": 1,
+        "type": "timeseries",
+        "title": "Order Flow",
+        "targets": [
+          {
+            "expr": "sum by (exchange, side) (rate(orders_placed_total[1m]))",
+            "legendFormat": "{{ exchange }} {{ side }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 0,
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2,
+              "showPoints": "never"
+            }
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "id": 2,
+        "type": "timeseries",
+        "title": "Fill Rate by Exchange",
+        "targets": [
+          {
+            "expr": "(sum by (exchange) (rate(orders_filled_total[5m])) / sum by (exchange) (rate(orders_placed_total[5m]))) * 100",
+            "legendFormat": "{{ exchange }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "min": 0,
+            "max": 100,
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "yellow", "value": 70 },
+                { "color": "green", "value": 90 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "id": 3,
+        "type": "heatmap",
+        "title": "Order Latency Distribution",
+        "targets": [
+          {
+            "expr": "sum by (le) (rate(order_processing_duration_seconds_bucket[5m]))",
+            "format": "heatmap",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": true,
+          "calculation": {
+            "xBuckets": { "mode": "count", "value": 100 },
+            "yBuckets": { "mode": "count", "value": 20 }
+          },
+          "color": {
+            "mode": "scheme",
+            "scheme": "Spectral"
+          },
+          "yAxis": {
+            "unit": "s",
+            "decimals": 6
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "id": 4,
+        "type": "timeseries",
+        "title": "Slippage Analysis",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum by (exchange, le) (rate(order_slippage_bucket[5m])))",
+            "legendFormat": "p50 {{ exchange }}",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum by (exchange, le) (rate(order_slippage_bucket[5m])))",
+            "legendFormat": "p95 {{ exchange }}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "decimals": 4,
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            }
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "id": 5,
+        "type": "table",
+        "title": "Strategy Performance",
+        "targets": [
+          {
+            "expr": "sum by (strategy) (strategy_pnl_total)",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          },
+          {
+            "expr": "sum by (strategy) (strategy_trades_total)",
+            "format": "table",
+            "instant": true,
+            "refId": "B"
+          },
+          {
+            "expr": "(sum by (strategy) (strategy_wins_total) / sum by (strategy) (strategy_trades_total)) * 100",
+            "format": "table",
+            "instant": true,
+            "refId": "C"
+          },
+          {
+            "expr": "max by (strategy) (strategy_sharpe_ratio)",
+            "format": "table",
+            "instant": true,
+            "refId": "D"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge",
+            "options": {}
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": { "Time": true },
+              "renameByName": {
+                "strategy": "Strategy",
+                "Value #A": "Total P&L",
+                "Value #B": "Trades",
+                "Value #C": "Win Rate %",
+                "Value #D": "Sharpe Ratio"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "Total P&L" },
+              "properties": [
+                { "id": "unit", "value": "currencyUSD" },
+                { "id": "decimals", "value": 2 },
+                { "id": "custom.displayMode", "value": "color-background" },
+                { "id": "thresholds", "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": -1000 },
+                    { "color": "yellow", "value": 0 },
+                    { "color": "green", "value": 1000 }
+                  ]
+                }}
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Win Rate %" },
+              "properties": [
+                { "id": "unit", "value": "percent" },
+                { "id": "decimals", "value": 1 },
+                { "id": "custom.displayMode", "value": "gradient-gauge" },
+                { "id": "min", "value": 0 },
+                { "id": "max", "value": 100 }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Sharpe Ratio" },
+              "properties": [
+                { "id": "decimals", "value": 2 },
+                { "id": "custom.displayMode", "value": "color-text" },
+                { "id": "thresholds", "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": 0 },
+                    { "color": "yellow", "value": 1 },
+                    { "color": "green", "value": 2 }
+                  ]
+                }}
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "id": 6,
+        "type": "timeseries",
+        "title": "Volume by Symbol",
+        "targets": [
+          {
+            "expr": "sum by (symbol) (rate(order_volume_total[5m]))",
+            "legendFormat": "{{ symbol }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 0,
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              }
+            }
+          }
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "calcs": ["lastNotNull", "mean"]
+          }
+        }
+      },
+      {
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+        "id": 7,
+        "type": "state-timeline",
+        "title": "Strategy States",
+        "targets": [
+          {
+            "expr": "strategy_state",
+            "legendFormat": "{{ strategy }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "fillOpacity": 70,
+              "lineWidth": 0
+            },
+            "mappings": [
+              { "type": "value", "value": 0, "options": { "0": { "text": "Stopped", "color": "red" } } },
+              { "type": "value", "value": 1, "options": { "1": { "text": "Starting", "color": "yellow" } } },
+              { "type": "value", "value": 2, "options": { "2": { "text": "Running", "color": "green" } } },
+              { "type": "value", "value": 3, "options": { "3": { "text": "Paused", "color": "blue" } } }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

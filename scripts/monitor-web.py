@@ -294,8 +294,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
 </html>'''
 
 def run_server():
-    server = HTTPServer(('localhost', 8080), MonitorHandler)
-    print("🌐 Web Monitor running at http://localhost:8080")
+    server = HTTPServer(('localhost', 8081), MonitorHandler)
+    print("🌐 Web Monitor running at http://localhost:8081")
     print("Press Ctrl+C to stop")
     try:
         server.serve_forever()

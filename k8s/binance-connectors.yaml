@@ -1,0 +1,311 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: binance-spot-service
+  namespace: mexoms
+  labels:
+    app: binance-spot
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8083
+    targetPort: 8083
+  selector:
+    app: binance-spot
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: binance-spot
+  namespace: mexoms
+  labels:
+    app: binance-spot
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: binance-spot
+  template:
+    metadata:
+      labels:
+        app: binance-spot
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8083"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: exchange-connector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: binance-spot
+        image: mexoms/binance-spot:latest
+        ports:
+        - containerPort: 8083
+          name: http
+        env:
+        - name: SERVICE_NAME
+          value: binance-spot
+        - name: NATS_URL
+          value: nats://nats-service:4222
+        - name: REDIS_ADDR
+          value: redis-service:6379
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: redis-password
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: binance-api-key
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: binance-secret-key
+        - name: LOG_LEVEL
+          value: info
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8083
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: logs
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - binance-spot
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: binance-futures-service
+  namespace: mexoms
+  labels:
+    app: binance-futures
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8084
+    targetPort: 8084
+  selector:
+    app: binance-futures
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: binance-futures
+  namespace: mexoms
+  labels:
+    app: binance-futures
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: binance-futures
+  template:
+    metadata:
+      labels:
+        app: binance-futures
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8084"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: exchange-connector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: binance-futures
+        image: mexoms/binance-futures:latest
+        ports:
+        - containerPort: 8084
+          name: http
+        env:
+        - name: SERVICE_NAME
+          value: binance-futures
+        - name: NATS_URL
+          value: nats://nats-service:4222
+        - name: REDIS_ADDR
+          value: redis-service:6379
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: redis-password
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: binance-api-key
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: binance-secret-key
+        - name: LOG_LEVEL
+          value: info
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8084
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8084
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: logs
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - binance-futures
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: exchange-connector
+  namespace: mexoms
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: binance-spot-hpa
+  namespace: mexoms
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: binance-spot
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: binance-futures-hpa
+  namespace: mexoms
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: binance-futures
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: binance-spot-pdb
+  namespace: mexoms
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: binance-spot
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: binance-futures-pdb
+  namespace: mexoms
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: binance-futures

@@ -1,0 +1,146 @@
+# Docker Makefile for mExOms
+
+.PHONY: help build push run stop clean logs shell test
+
+# Default values
+REGISTRY ?= mexoms
+VERSION ?= latest
+ENV ?= development
+
+# Service names
+SERVICES = oms-server binance-spot binance-futures monitor
+
+# Colors
+GREEN = \033[0;32m
+RED = \033[0;31m
+NC = \033[0m
+
+help: ## Show this help message
+	@echo 'Usage: make -f Makefile.docker [target]'
+	@echo ''
+	@echo 'Targets:'
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+build: ## Build all Docker images
+	@echo "$(GREEN)Building Docker images...$(NC)"
+	@docker compose -f docker-compose.yml build
+
+build-prod: ## Build production Docker images
+	@echo "$(GREEN)Building production Docker images...$(NC)"
+	@bash scripts/docker-build.sh
+
+run: ## Run all services with docker-compose
+	@echo "$(GREEN)Starting services...$(NC)"
+	@docker compose up -d
+
+run-prod: ## Run production services
+	@echo "$(GREEN)Starting production services...$(NC)"
+	@docker compose -f docker-compose.prod.yml up -d
+
+stop: ## Stop all services
+	@echo "$(GREEN)Stopping services...$(NC)"
+	@docker compose down
+
+stop-prod: ## Stop production services
+	@echo "$(GREEN)Stopping production services...$(NC)"
+	@docker compose -f docker-compose.prod.yml down
+
+restart: stop run ## Restart all services
+
+logs: ## Show logs from all services
+	@docker compose logs -f
+
+logs-service: ## Show logs from specific service (use SERVICE=name)
+	@docker compose logs -f $(SERVICE)
+
+shell: ## Open shell in container (use SERVICE=name)
+	@docker compose exec $(SERVICE) /bin/sh
+
+shell-server: ## Open shell in OMS server
+	@docker compose exec oms-server /bin/sh
+
+test: ## Run tests in Docker
+	@echo "$(GREEN)Running tests in Docker...$(NC)"
+	@docker compose run --rm oms-server go test ./...
+
+clean: ## Clean up Docker resources
+	@echo "$(RED)Cleaning up Docker resources...$(NC)"
+	@docker compose down -v
+	@docker system prune -f
+
+health: ## Check health of all services
+	@echo "$(GREEN)Checking service health...$(NC)"
+	@docker compose ps
+	@echo ""
+	@for service in $(SERVICES); do \
+		echo -n "$$service: "; \
+		docker compose exec -T $$service wget -q -O- http://localhost:8081/health 2>/dev/null && echo "$(GREEN)healthy$(NC)" || echo "$(RED)unhealthy$(NC)"; \
+	done
+
+backup: ## Backup data volumes
+	@echo "$(GREEN)Backing up data volumes...$(NC)"
+	@mkdir -p backups
+	@docker run --rm -v mexoms_postgres-data:/data -v $(PWD)/backups:/backup alpine tar czf /backup/postgres-backup-$(shell date +%Y%m%d-%H%M%S).tar.gz -C /data .
+	@docker run --rm -v mexoms_redis-data:/data -v $(PWD)/backups:/backup alpine tar czf /backup/redis-backup-$(shell date +%Y%m%d-%H%M%S).tar.gz -C /data .
+	@echo "$(GREEN)Backup completed$(NC)"
+
+restore: ## Restore data volumes from backup
+	@echo "$(GREEN)Restoring from backup...$(NC)"
+	@echo "Available backups:"
+	@ls -la backups/
+	@echo ""
+	@echo "Usage: make restore-postgres BACKUP=postgres-backup-TIMESTAMP.tar.gz"
+
+restore-postgres: ## Restore PostgreSQL from backup
+	@docker run --rm -v mexoms_postgres-data:/data -v $(PWD)/backups:/backup alpine tar xzf /backup/$(BACKUP) -C /data
+	@echo "$(GREEN)PostgreSQL restored from $(BACKUP)$(NC)"
+
+restore-redis: ## Restore Redis from backup
+	@docker run --rm -v mexoms_redis-data:/data -v $(PWD)/backups:/backup alpine tar xzf /backup/$(BACKUP) -C /data
+	@echo "$(GREEN)Redis restored from $(BACKUP)$(NC)"
+
+push: ## Push images to registry
+	@echo "$(GREEN)Pushing images to registry...$(NC)"
+	@for service in $(SERVICES); do \
+		docker push $(REGISTRY)/$$service:$(VERSION); \
+		docker push $(REGISTRY)/$$service:latest; \
+	done
+
+pull: ## Pull images from registry
+	@echo "$(GREEN)Pulling images from registry...$(NC)"
+	@for service in $(SERVICES); do \
+		docker pull $(REGISTRY)/$$service:$(VERSION); \
+	done
+
+stats: ## Show container resource usage
+	@docker stats --no-stream
+
+network-inspect: ## Inspect Docker network
+	@docker network inspect mexoms-network
+
+volumes: ## List all volumes
+	@docker volume ls | grep mexoms
+
+exec-sql: ## Execute SQL in PostgreSQL
+	@docker compose exec postgres psql -U mexoms -d mexoms
+
+exec-redis: ## Execute Redis CLI
+	@docker compose exec redis redis-cli -a mexoms123
+
+scale: ## Scale a service (use SERVICE=name COUNT=n)
+	@docker compose up -d --scale $(SERVICE)=$(COUNT)
+
+init-vault: ## Initialize Vault
+	@echo "$(GREEN)Initializing Vault...$(NC)"
+	@docker compose exec vault vault operator init
+
+update: ## Update all services to latest version
+	@echo "$(GREEN)Updating services...$(NC)"
+	@make -f Makefile.docker pull
+	@make -f Makefile.docker restart
+
+monitor: ## Open monitoring dashboards
+	@echo "$(GREEN)Opening monitoring dashboards...$(NC)"
+	@echo "Grafana: http://localhost:3000 (admin/$(GRAFANA_PASSWORD))"
+	@echo "Prometheus: http://localhost:9091"
+	@echo "Kibana: http://localhost:5601"

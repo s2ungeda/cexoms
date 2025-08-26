@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package oms.v1;
+
+option go_package = "github.com/mExOms/oms/pkg/proto/oms/v1;omsv1";
+
+import "google/protobuf/timestamp.proto";
+import "oms/v1/common.proto";
+
+// Account represents a trading account
+message Account {
+    string id = 1;
+    string name = 2;
+    AccountType type = 3;
+    string exchange = 4;
+    string strategy = 5;
+    bool spot_enabled = 6;
+    bool futures_enabled = 7;
+    string max_position_usdt = 8;
+    int32 max_leverage = 9;
+    bool active = 10;
+    google.protobuf.Timestamp created_at = 11;
+    google.protobuf.Timestamp updated_at = 12;
+}
+
+// AccountType represents the type of account
+enum AccountType {
+    ACCOUNT_TYPE_UNSPECIFIED = 0;
+    ACCOUNT_TYPE_MAIN = 1;
+    ACCOUNT_TYPE_SUB = 2;
+    ACCOUNT_TYPE_STRATEGY = 3;
+}
+
+// AccountBalance represents account balance
+message AccountBalance {
+    string account_id = 1;
+    string exchange = 2;
+    string asset = 3;
+    string total = 4;
+    string available = 5;
+    string locked = 6;
+    google.protobuf.Timestamp update_time = 7;
+}
+
+// AccountPosition represents positions for an account
+message AccountPosition {
+    string account_id = 1;
+    string symbol = 2;
+    PositionSide side = 3;
+    string quantity = 4;
+    string entry_price = 5;
+    string mark_price = 6;
+    string unrealized_pnl = 7;
+    string realized_pnl = 8;
+    string margin = 9;
+    int32 leverage = 10;
+    google.protobuf.Timestamp update_time = 11;
+}
+
+// AccountTransfer represents a transfer between accounts
+message AccountTransfer {
+    string id = 1;
+    string from_account = 2;
+    string to_account = 3;
+    string asset = 4;
+    string amount = 5;
+    TransferStatus status = 6;
+    string reason = 7;
+    google.protobuf.Timestamp created_at = 8;
+    google.protobuf.Timestamp executed_at = 9;
+}
+
+// TransferStatus represents transfer status
+enum TransferStatus {
+    TRANSFER_STATUS_UNSPECIFIED = 0;
+    TRANSFER_STATUS_PENDING = 1;
+    TRANSFER_STATUS_PROCESSING = 2;
+    TRANSFER_STATUS_COMPLETED = 3;
+    TRANSFER_STATUS_FAILED = 4;
+    TRANSFER_STATUS_CANCELLED = 5;
+}
+
+// AccountMetrics represents account performance metrics
+message AccountMetrics {
+    string account_id = 1;
+    string total_pnl = 2;
+    string today_pnl = 3;
+    double win_rate = 4;
+    int64 total_trades = 5;
+    string max_drawdown = 6;
+    double sharpe_ratio = 7;
+    google.protobuf.Timestamp updated_at = 8;
+}
+
+// Requests and Responses
+
+message CreateAccountRequest {
+    string name = 1;
+    AccountType type = 2;
+    string exchange = 3;
+    string strategy = 4;
+    bool spot_enabled = 5;
+    bool futures_enabled = 6;
+    string max_position_usdt = 7;
+    int32 max_leverage = 8;
+}
+
+message CreateAccountResponse {
+    Account account = 1;
+}
+
+message GetAccountRequest {
+    string account_id = 1;
+}
+
+message GetAccountResponse {
+    Account account = 1;
+}
+
+message ListAccountsRequest {
+    bool active_only = 1;
+    string exchange = 2;
+    AccountType type = 3;
+    string strategy = 4;
+    int32 page_size = 5;
+    string page_token = 6;
+}
+
+message ListAccountsResponse {
+    repeated Account accounts = 1;
+    string next_page_token = 2;
+}
+
+message GetAccountBalanceRequest {
+    string account_id = 1;
+}
+
+message GetAccountBalanceResponse {
+    repeated AccountBalance balances = 1;
+}
+
+message GetAccountPositionsRequest {
+    string account_id = 1;
+}
+
+message GetAccountPositionsResponse {
+    repeated AccountPosition positions = 1;
+}
+
+message TransferRequest {
+    string from_account = 1;
+    string to_account = 2;
+    string asset = 3;
+    string amount = 4;
+    string reason = 5;
+}
+
+message TransferResponse {
+    AccountTransfer transfer = 1;
+}
+
+message GetTransferHistoryRequest {
+    string account_id = 1;
+    int32 limit = 2;
+}
+
+message GetTransferHistoryResponse {
+    repeated AccountTransfer transfers = 1;
+}
+
+message GetAccountMetricsRequest {
+    string account_id = 1;
+}
+
+message GetAccountMetricsResponse {
+    AccountMetrics metrics = 1;
+}
+
+message SelectAccountRequest {
+    string strategy = 1;
+    string min_balance = 2;
+    int32 max_positions = 3;
+}
+
+message SelectAccountResponse {
+    Account account = 1;
+}

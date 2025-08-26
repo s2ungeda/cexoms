@@ -1,0 +1,193 @@
+{{- if .Values.omsServer.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mexoms.fullname" . }}-oms-server
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oms-server
+spec:
+  type: {{ .Values.omsServer.service.type }}
+  ports:
+  - name: http
+    port: {{ .Values.omsServer.service.httpPort }}
+    targetPort: http
+  - name: grpc
+    port: {{ .Values.omsServer.service.grpcPort }}
+    targetPort: grpc
+  - name: metrics
+    port: {{ .Values.omsServer.service.metricsPort }}
+    targetPort: metrics
+  selector:
+    {{- include "mexoms.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: oms-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mexoms.fullname" . }}-oms-server
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oms-server
+spec:
+  replicas: {{ .Values.omsServer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mexoms.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: oms-server
+  template:
+    metadata:
+      labels:
+        {{- include "mexoms.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: oms-server
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.omsServer.service.metricsPort }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "mexoms.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: init-db
+        image: "{{ .Values.omsServer.image.repository }}:{{ .Values.omsServer.image.tag }}"
+        imagePullPolicy: {{ .Values.omsServer.image.pullPolicy }}
+        command: ["/app/scripts/init-db.sh"]
+        env:
+        - name: POSTGRES_HOST
+          value: {{ include "mexoms.postgresql.fullname" . }}
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_USER
+          value: {{ .Values.postgresql.auth.username }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mexoms.fullname" . }}-secrets
+              key: postgres-password
+        volumeMounts:
+        - name: scripts
+          mountPath: /app/scripts
+      containers:
+      - name: oms-server
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.omsServer.image.repository }}:{{ .Values.omsServer.image.tag }}"
+        imagePullPolicy: {{ .Values.omsServer.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.omsServer.service.httpPort }}
+          protocol: TCP
+        - name: grpc
+          containerPort: {{ .Values.omsServer.service.grpcPort }}
+          protocol: TCP
+        - name: metrics
+          containerPort: {{ .Values.omsServer.service.metricsPort }}
+          protocol: TCP
+        env:
+        - name: CONFIG_PATH
+          value: /app/config/config.yaml
+        - name: LOG_LEVEL
+          value: {{ .Values.omsServer.config.logLevel }}
+        - name: WORKER_THREADS
+          value: "{{ .Values.omsServer.config.workerThreads }}"
+        - name: BUFFER_SIZE
+          value: "{{ .Values.omsServer.config.bufferSize }}"
+        {{- include "mexoms.env.database" . | nindent 8 }}
+        {{- include "mexoms.env.redis" . | nindent 8 }}
+        {{- include "mexoms.env.nats" . | nindent 8 }}
+        {{- include "mexoms.env.security" . | nindent 8 }}
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        - name: logs
+          mountPath: /app/logs
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: metrics
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.omsServer.resources | nindent 10 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "mexoms.fullname" . }}-config
+      - name: scripts
+        configMap:
+          name: {{ include "mexoms.fullname" . }}-scripts
+          defaultMode: 0755
+      - name: logs
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.omsServer.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "mexoms.fullname" . }}-oms-server
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oms-server
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "mexoms.fullname" . }}-oms-server
+  minReplicas: {{ .Values.omsServer.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.omsServer.autoscaling.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.omsServer.autoscaling.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.omsServer.autoscaling.targetMemoryUtilizationPercentage }}
+{{- end }}
+{{- if .Values.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "mexoms.fullname" . }}-oms-server
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oms-server
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable.omsServer }}
+  selector:
+    matchLabels:
+      {{- include "mexoms.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: oms-server
+{{- end }}
+{{- end }}

@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,6 +29,9 @@ type Manager struct {
 	// Rate limit tracking
 	rateLimitTracker map[string]*RateLimitInfo
 	
+	// API key management
+	keyProvider *APIKeyProvider
+	
 	// Configuration
 	dataDir string
 	config  *Config
@@ -49,7 +53,7 @@ type RateLimitInfo struct {
 }
 
 // NewManager creates a new account manager
-func NewManager(config *Config) (*Manager, error) {
+func NewManager(config *Config, keyProvider *APIKeyProvider) (*Manager, error) {
 	m := &Manager{
 		accounts:         make(map[string]*types.Account),
 		balances:         make(map[string]*types.AccountBalance),
@@ -57,6 +61,7 @@ func NewManager(config *Config) (*Manager, error) {
 		metrics:          make(map[string]*types.AccountMetrics),
 		transfers:        make(map[string]*types.AccountTransfer),
 		rateLimitTracker: make(map[string]*RateLimitInfo),
+		keyProvider:      keyProvider,
 		dataDir:          config.DataDir,
 		config:           config,
 	}
@@ -752,4 +757,97 @@ func (m *Manager) UpdateRateLimit(accountID string, weight int) {
 	
 	rl.UsedWeight += weight
 	rl.LastUpdate = time.Now()
+}
+
+// GetAPIKeys retrieves API keys for an account
+func (m *Manager) GetAPIKeys(accountID string) (*types.APICredentials, error) {
+	m.mu.RLock()
+	account, exists := m.accounts[accountID]
+	m.mu.RUnlock()
+	
+	if !exists {
+		return nil, fmt.Errorf("account %s not found", accountID)
+	}
+	
+	return m.keyProvider.GetAPIKeys(context.Background(), account)
+}
+
+// StoreAPIKeys stores API keys for an account
+func (m *Manager) StoreAPIKeys(accountID string, creds *types.APICredentials) error {
+	m.mu.RLock()
+	account, exists := m.accounts[accountID]
+	m.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("account %s not found", accountID)
+	}
+	
+	return m.keyProvider.StoreAPIKeys(context.Background(), account, creds)
+}
+
+// RotateAPIKeys manually triggers key rotation for an account
+func (m *Manager) RotateAPIKeys(accountID string) error {
+	return m.keyProvider.RotateAPIKeys(context.Background(), accountID)
+}
+
+// GetBestAccountForOperation returns the best account for a given operation
+func (m *Manager) GetBestAccountForOperation(exchange string, market types.MarketType, operation string) (*types.Account, error) {
+	// Get best account ID from key provider
+	accountID, err := m.keyProvider.GetBestAccount(exchange, market, operation)
+	if err != nil {
+		return nil, err
+	}
+	
+	m.mu.RLock()
+	account, exists := m.accounts[accountID]
+	m.mu.RUnlock()
+	
+	if !exists {
+		return nil, fmt.Errorf("account %s not found", accountID)
+	}
+	
+	return account, nil
+}
+
+// ValidateAccountOperation checks if an account can perform an operation
+func (m *Manager) ValidateAccountOperation(accountID string, operation string) bool {
+	m.mu.RLock()
+	account, exists := m.accounts[accountID]
+	m.mu.RUnlock()
+	
+	if !exists {
+		return false
+	}
+	
+	return m.keyProvider.ValidateOperation(account, operation)
+}
+
+// SetAccountPermissions sets custom permissions for an account
+func (m *Manager) SetAccountPermissions(accountID string, permissions []string) error {
+	m.mu.RLock()
+	_, exists := m.accounts[accountID]
+	m.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("account %s not found", accountID)
+	}
+	
+	m.keyProvider.SetAccountPermissions(accountID, permissions)
+	return nil
+}
+
+// StartKeyRotation starts the automatic key rotation service
+func (m *Manager) StartKeyRotation() {
+	m.keyProvider.StartRotationService()
+}
+
+// GetKeyRotationStatus returns the current key rotation status
+func (m *Manager) GetKeyRotationStatus() map[string]interface{} {
+	rotationStatus := m.keyProvider.GetRotationStatus()
+	cacheStats := m.keyProvider.GetCacheStats()
+	
+	return map[string]interface{}{
+		"rotation_tasks": rotationStatus,
+		"cache_stats":    cacheStats,
+	}
 }

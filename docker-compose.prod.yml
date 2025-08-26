@@ -1,0 +1,307 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: mexoms-postgres
+    environment:
+      POSTGRES_DB: mexoms
+      POSTGRES_USER: mexoms
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mexoms123}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - oms-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mexoms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: mexoms-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-mexoms123}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - oms-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # NATS Messaging
+  nats:
+    image: nats:2.10-alpine
+    container_name: mexoms-nats
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    networks:
+      - oms-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4222"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # HashiCorp Vault
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: mexoms-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: http://0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault-data:/vault/data
+      - ./configs/vault:/vault/config
+    networks:
+      - oms-network
+    command: server
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: mexoms-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9091:9090"
+    networks:
+      - oms-network
+    restart: unless-stopped
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: mexoms-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-mexoms123}
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    networks:
+      - oms-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # OMS Server
+  oms-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mexoms-server
+    environment:
+      - ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=mexoms
+      - DB_USER=mexoms
+      - DB_PASSWORD=${DB_PASSWORD:-mexoms123}
+      - REDIS_HOST=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-mexoms123}
+      - NATS_URL=nats://nats:4222
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN}
+      - TLS_CERT=/app/certs/server.crt
+      - TLS_KEY=/app/certs/server.key
+    ports:
+      - "8080:8080"  # HTTP API
+      - "8081:8081"  # Health/Metrics
+      - "9090:9090"  # gRPC
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./certs:/app/certs:ro
+    networks:
+      - oms-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Binance Spot Connector
+  binance-spot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mexoms-binance-spot
+    command: ["/app/bin/binance-spot"]
+    environment:
+      - ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NATS_URL=nats://nats:4222
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN}
+      - REDIS_HOST=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-mexoms123}
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+    networks:
+      - oms-network
+    depends_on:
+      - oms-server
+    restart: unless-stopped
+
+  # Binance Futures Connector
+  binance-futures:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mexoms-binance-futures
+    command: ["/app/bin/binance-futures"]
+    environment:
+      - ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NATS_URL=nats://nats:4222
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN}
+      - REDIS_HOST=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-mexoms123}
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+    networks:
+      - oms-network
+    depends_on:
+      - oms-server
+    restart: unless-stopped
+
+  # Monitoring Service
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mexoms-monitor
+    command: ["/app/bin/monitor"]
+    environment:
+      - ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NATS_URL=nats://nats:4222
+      - PROMETHEUS_ADDR=:8081
+    ports:
+      - "8082:8081"
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+    networks:
+      - oms-network
+    depends_on:
+      - oms-server
+    restart: unless-stopped
+
+  # Elasticsearch for logging
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: mexoms-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - oms-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # Kibana for log visualization
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.1
+    container_name: mexoms-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - oms-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Filebeat for log shipping
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.1
+    container_name: mexoms-filebeat
+    user: root
+    volumes:
+      - ./configs/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./logs:/logs:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - oms-network
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  nats-data:
+  vault-data:
+  prometheus-data:
+  grafana-data:
+  elasticsearch-data:
+
+networks:
+  oms-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

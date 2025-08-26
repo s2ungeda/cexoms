@@ -130,6 +130,17 @@ make clean
 - **Low Latency**: Persistent WebSocket connections for orders, market data, and user data
 - **REST as Fallback**: REST API only for initialization and when WebSocket is unavailable
 
+### CRITICAL: Real Data Only Policy
+- **NO SIMULATED DATA** - Never use Math.random() or similar to generate fake metrics
+- **NO DUMMY VALUES** - If data is unavailable, show 0 or "N/A", never fake values
+- **REAL SOURCES ONLY** - Data must come from:
+  - Live WebSocket streams
+  - Actual log files
+  - System commands (ps, top, free)
+  - NATS messages
+  - API responses
+- **NO HARDCODED INCREMENTS** - Never artificially increase counters or metrics
+
 ### Adding New Exchanges
 
 To add a new exchange:
@@ -146,3 +157,52 @@ The project follows the 18-phase development plan in `oms-guide.md`:
 - Phase 5-6: Binance connectors (next)
 - Phase 7-10: Advanced features
 - Phase 11-18: Production readiness
+
+### Work Log Guidelines
+
+When working on this project, create daily work logs following these rules:
+
+1. **File Format**: `WORK_LOG_YYYY-MM-DD.md` (e.g., WORK_LOG_2025-08-26.md)
+
+2. **Log Structure**:
+```markdown
+# Work Log - YYYY-MM-DD
+
+## 작업 요약
+[오늘 작업한 내용의 간략한 요약]
+
+## 완료된 작업
+- [완료된 Phase 및 주요 기능]
+- [구현된 파일 목록]
+- [해결된 이슈]
+
+## 진행 중인 작업
+- [현재 작업 중인 내용]
+- [완료율 %]
+- [예상 완료 시점]
+
+## 다음 작업 계획
+- [다음에 진행할 Phase]
+- [구현해야 할 기능]
+- [우선순위]
+
+## Phase 진행 현황
+- 전체: X/22 완료
+- [각 Phase별 상태]
+
+## 주요 변경사항
+- [코드 변경사항]
+- [아키텍처 결정사항]
+- [발견된 이슈]
+
+## 참고사항
+- [다음 작업자를 위한 메모]
+- [주의사항]
+```
+
+3. **Important Rules**:
+- Always reference previous work logs for continuity
+- Track incomplete tasks for next session
+- Accurately record Phase progress (total 22 phases)
+- Include all created/modified files
+- Note any architectural decisions or issues

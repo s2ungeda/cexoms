@@ -1,0 +1,241 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: oms-server-service
+  namespace: mexoms
+  labels:
+    app: oms-server
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: grpc
+    port: 9090
+    targetPort: 9090
+  - name: metrics
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: oms-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oms-server
+  namespace: mexoms
+  labels:
+    app: oms-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: oms-server
+  template:
+    metadata:
+      labels:
+        app: oms-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: oms-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      initContainers:
+      - name: init-db
+        image: mexoms/oms-server:latest
+        command: ["/app/scripts/init-db.sh"]
+        env:
+        - name: POSTGRES_HOST
+          value: postgres-service
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: postgres-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: postgres-password
+        volumeMounts:
+        - name: scripts
+          mountPath: /app/scripts
+      containers:
+      - name: oms-server
+        image: mexoms/oms-server:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: grpc
+        - containerPort: 8081
+          name: metrics
+        env:
+        - name: CONFIG_PATH
+          value: /app/config/config.yaml
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: postgres-password
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: redis-password
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: jwt-secret
+        - name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mexoms-secrets
+              key: vault-token
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        - name: logs
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config
+        configMap:
+          name: mexoms-config
+      - name: scripts
+        configMap:
+          name: mexoms-scripts
+          defaultMode: 0755
+      - name: logs
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - oms-server
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oms-server
+  namespace: mexoms
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: oms-server
+  namespace: mexoms
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: oms-server
+  namespace: mexoms
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: oms-server
+subjects:
+- kind: ServiceAccount
+  name: oms-server
+  namespace: mexoms
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: oms-server-hpa
+  namespace: mexoms
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: oms-server
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: oms-server-pdb
+  namespace: mexoms
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: oms-server

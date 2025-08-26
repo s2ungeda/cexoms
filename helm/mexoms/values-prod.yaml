@@ -1,0 +1,196 @@
+# Production environment values for mexoms
+
+global:
+  environment: production
+  domain: mexoms.com
+
+# Production-grade configuration
+omsServer:
+  replicaCount: 3
+  image:
+    repository: registry.mexoms.com/mexoms/oms-server
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2"
+    limits:
+      memory: "8Gi"
+      cpu: "4"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+
+binanceSpot:
+  replicaCount: 3
+  image:
+    repository: registry.mexoms.com/mexoms/binance-spot
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+
+binanceFutures:
+  replicaCount: 3
+  image:
+    repository: registry.mexoms.com/mexoms/binance-futures
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+
+# External database configuration
+postgresql:
+  enabled: false  # Use external database
+  
+# External Redis configuration
+redis:
+  enabled: false  # Use external Redis cluster
+
+# Production security settings
+security:
+  tls:
+    enabled: true
+    certManager:
+      enabled: true
+      issuer: letsencrypt-prod
+  networkPolicy:
+    enabled: true
+  podSecurityPolicy:
+    enabled: true
+  jwtSecret: "CHANGE_ME_IN_PRODUCTION"  # Override in secrets
+
+# Vault for secret management
+vault:
+  enabled: true
+  server:
+    ha:
+      enabled: true
+      replicas: 5
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1"
+
+# Production monitoring
+prometheus:
+  enabled: true
+  retention: 90d
+  storageSize: 500Gi
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2"
+    limits:
+      memory: "8Gi"
+      cpu: "4"
+
+grafana:
+  enabled: true
+  adminPassword: "CHANGE_ME_IN_PRODUCTION"
+  persistence:
+    enabled: true
+    size: 50Gi
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Production backup configuration
+backup:
+  enabled: true
+  schedule: "0 2,14 * * *"  # Twice daily
+  retention: 30  # Days
+  storageSize: 500Gi
+  storageClass: fast-ssd
+  s3:
+    enabled: true
+    bucket: mexoms-backups
+    prefix: production
+    region: us-west-2
+
+# Production ingress
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+
+# Resource quotas for production
+resourceQuota:
+  enabled: true
+  limits:
+    cpu: "1000"
+    memory: "1000Gi"
+    persistentvolumeclaims: "50"
+
+# Strict pod disruption budgets
+podDisruptionBudget:
+  enabled: true
+  minAvailable:
+    omsServer: 2
+    binanceSpot: 2
+    binanceFutures: 2
+
+# Node affinity for production workloads
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: workload-type
+          operator: In
+          values:
+          - production
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - mexoms
+      topologyKey: kubernetes.io/hostname
+
+# Production tolerations
+tolerations:
+- key: "production"
+  operator: "Equal"
+  value: "true"
+  effect: "NoSchedule"
+
+# Private docker registry
+dockerRegistry:
+  enabled: true
+  server: registry.mexoms.com
+  username: "CHANGE_ME"
+  password: "CHANGE_ME"
+  email: ops@mexoms.com

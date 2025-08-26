@@ -1,0 +1,194 @@
+groups:
+  - name: oms_critical
+    interval: 30s
+    rules:
+      # Order Processing Alerts
+      - alert: HighOrderLatency
+        expr: histogram_quantile(0.99, rate(oms_order_duration_seconds_bucket[5m])) > 0.001
+        for: 2m
+        labels:
+          severity: critical
+          component: order_processing
+        annotations:
+          summary: "High order processing latency detected"
+          description: "P99 order latency is {{ $value }}s (threshold: 1ms)"
+      
+      - alert: OrderProcessingErrors
+        expr: rate(oms_order_errors_total[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          component: order_processing
+        annotations:
+          summary: "High order error rate"
+          description: "Order error rate is {{ $value }} errors/sec for {{ $labels.exchange }}"
+      
+      - alert: OrderRejectionRate
+        expr: (rate(oms_orders_total{status="rejected"}[5m]) / rate(oms_orders_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: order_processing
+        annotations:
+          summary: "High order rejection rate"
+          description: "{{ $value | humanizePercentage }} of orders are being rejected on {{ $labels.exchange }}"
+
+  - name: oms_exchange_health
+    interval: 30s
+    rules:
+      # Exchange Connectivity
+      - alert: ExchangeDisconnected
+        expr: oms_websocket_connections == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: websocket
+        annotations:
+          summary: "Exchange WebSocket disconnected"
+          description: "No active WebSocket connections for {{ $labels.exchange }} {{ $labels.stream_type }}"
+      
+      - alert: ExchangeHighLatency
+        expr: histogram_quantile(0.95, rate(oms_exchange_api_latency_seconds_bucket[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          component: exchange_api
+        annotations:
+          summary: "High exchange API latency"
+          description: "{{ $labels.exchange }} API latency P95 is {{ $value }}s"
+      
+      - alert: ExchangeRateLimitApproaching
+        expr: oms_exchange_rate_limit_remaining < 100
+        for: 1m
+        labels:
+          severity: warning
+          component: exchange_api
+        annotations:
+          summary: "Exchange rate limit approaching"
+          description: "Only {{ $value }} requests remaining for {{ $labels.exchange }} {{ $labels.limit_type }}"
+
+  - name: oms_system_resources
+    interval: 30s
+    rules:
+      # System Resources
+      - alert: HighMemoryUsage
+        expr: oms_memory_usage_bytes > 10737418240  # 10GB
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanize1024 }}B"
+      
+      - alert: HighCPUUsage
+        expr: oms_cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value }}%"
+      
+      - alert: TooManyGoroutines
+        expr: oms_goroutines > 5000
+        for: 3m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Too many goroutines"
+          description: "{{ $value }} goroutines are running"
+
+  - name: oms_trading_risks
+    interval: 30s
+    rules:
+      # Risk Management
+      - alert: HighRiskScore
+        expr: oms_risk_score > 80
+        for: 1m
+        labels:
+          severity: critical
+          component: risk_management
+        annotations:
+          summary: "High risk score detected"
+          description: "Risk score is {{ $value }} for {{ $labels.exchange }} {{ $labels.market }}"
+      
+      - alert: HighMarginUsage
+        expr: oms_margin_usage_percent > 75
+        for: 2m
+        labels:
+          severity: warning
+          component: risk_management
+        annotations:
+          summary: "High margin usage"
+          description: "Margin usage is {{ $value }}% on {{ $labels.exchange }}"
+      
+      - alert: LargeDrawdown
+        expr: oms_drawdown_percent > 10
+        for: 1m
+        labels:
+          severity: critical
+          component: risk_management
+        annotations:
+          summary: "Large drawdown detected"
+          description: "{{ $value }}% drawdown on {{ $labels.exchange }}"
+
+  - name: oms_market_conditions
+    interval: 30s
+    rules:
+      # Market Conditions
+      - alert: HighSpread
+        expr: oms_spread_basis_points > 50
+        for: 5m
+        labels:
+          severity: info
+          component: market_data
+        annotations:
+          summary: "High bid-ask spread"
+          description: "Spread is {{ $value }} bps for {{ $labels.symbol }} on {{ $labels.exchange }}"
+      
+      - alert: OrderBookImbalance
+        expr: abs(oms_orderbook_imbalance) > 0.7
+        for: 3m
+        labels:
+          severity: info
+          component: market_data
+        annotations:
+          summary: "Order book imbalance detected"
+          description: "Order book imbalance is {{ $value }} for {{ $labels.symbol }} on {{ $labels.exchange }}"
+      
+      - alert: HighSlippage
+        expr: histogram_quantile(0.95, rate(oms_slippage_basis_points_bucket[5m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+          component: trading
+        annotations:
+          summary: "High slippage detected"
+          description: "P95 slippage is {{ $value }} bps for {{ $labels.symbol }} on {{ $labels.exchange }}"
+
+  - name: oms_performance
+    interval: 30s
+    rules:
+      # Performance Metrics
+      - alert: LowOrderThroughput
+        expr: sum(rate(oms_orders_total[5m])) < 10
+        for: 10m
+        labels:
+          severity: info
+          component: performance
+        annotations:
+          summary: "Low order throughput"
+          description: "Order throughput is only {{ $value }} orders/sec"
+      
+      - alert: LowFillRate
+        expr: oms_fill_rate_percent < 80
+        for: 10m
+        labels:
+          severity: warning
+          component: trading
+        annotations:
+          summary: "Low order fill rate"
+          description: "Fill rate is {{ $value }}% on {{ $labels.exchange }}"

@@ -19,6 +19,11 @@ type Exchange interface {
 	GetAccountInfo(ctx context.Context) (*AccountInfo, error)
 	GetBalances(ctx context.Context) ([]Balance, error)
 	
+	// Transfer operations
+	TransferToSubAccount(ctx context.Context, toAccountID string, asset string, amount float64) (string, error)
+	TransferFromSubAccount(ctx context.Context, fromAccountID string, asset string, amount float64) (string, error)
+	TransferBetweenSubAccounts(ctx context.Context, fromAccountID, toAccountID string, asset string, amount float64) (string, error)
+	
 	// Order operations
 	PlaceOrder(ctx context.Context, order *Order) (*Order, error)
 	CancelOrder(ctx context.Context, symbol string, orderID string) error

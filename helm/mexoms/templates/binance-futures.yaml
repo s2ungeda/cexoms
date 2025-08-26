@@ -1,0 +1,163 @@
+{{- if .Values.binanceFutures.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mexoms.fullname" . }}-binance-futures
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: binance-futures
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8084
+    targetPort: http
+  selector:
+    {{- include "mexoms.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: binance-futures
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mexoms.fullname" . }}-binance-futures
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: binance-futures
+spec:
+  replicas: {{ .Values.binanceFutures.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mexoms.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: binance-futures
+  template:
+    metadata:
+      labels:
+        {{- include "mexoms.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: binance-futures
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8084"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "mexoms.serviceAccountName" . }}-exchange
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: binance-futures
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.binanceFutures.image.repository }}:{{ .Values.binanceFutures.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.binanceFutures.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - name: http
+          containerPort: 8084
+          protocol: TCP
+        env:
+        - name: SERVICE_NAME
+          value: binance-futures
+        - name: NATS_URL
+          value: nats://{{ include "mexoms.nats.fullname" . }}:4222
+        - name: REDIS_ADDR
+          value: {{ include "mexoms.redis.fullname" . }}:6379
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mexoms.fullname" . }}-secrets
+              key: redis-password
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mexoms.fullname" . }}-secrets
+              key: binance-api-key
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mexoms.fullname" . }}-secrets
+              key: binance-secret-key
+        - name: LOG_LEVEL
+          value: {{ .Values.binanceFutures.logLevel | default .Values.omsServer.config.logLevel }}
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.binanceFutures.resources | nindent 10 }}
+      volumes:
+      - name: logs
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.binanceFutures.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "mexoms.fullname" . }}-binance-futures
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: binance-futures
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "mexoms.fullname" . }}-binance-futures
+  minReplicas: {{ .Values.binanceFutures.autoscaling.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.binanceFutures.autoscaling.maxReplicas | default 5 }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.binanceFutures.autoscaling.targetCPUUtilizationPercentage | default 70 }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.binanceFutures.autoscaling.targetMemoryUtilizationPercentage | default 80 }}
+{{- end }}
+{{- if .Values.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "mexoms.fullname" . }}-binance-futures
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: binance-futures
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable.binanceFutures }}
+  selector:
+    matchLabels:
+      {{- include "mexoms.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: binance-futures
+{{- end }}
+{{- end }}

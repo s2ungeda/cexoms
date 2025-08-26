@@ -1,0 +1,178 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2023-01-01
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/boltdb-shipper-active
+    cache_location: /loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: filesystem
+  filesystem:
+    directory: /loki/chunks
+  aws:
+    s3: s3://us-west-2/mexoms-logs
+    bucketnames: mexoms-logs
+    region: us-west-2
+    access_key_id: ${AWS_ACCESS_KEY_ID}
+    secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+
+compactor:
+  working_directory: /loki/boltdb-shipper-compactor
+  shared_store: filesystem
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+
+limits_config:
+  enforce_metric_name: false
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_entries_limit_per_query: 5000
+  retention_period: 744h # 31 days
+  
+  # Per-tenant overrides
+  per_tenant_override_config: /etc/loki/overrides.yaml
+
+chunk_store_config:
+  max_look_back_period: 0s
+
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 744h
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  alertmanager_url: http://alertmanager:9093
+  ring:
+    kvstore:
+      store: inmemory
+  enable_api: true
+  enable_alertmanager_v2: true
+
+analytics:
+  reporting_enabled: false
+
+# Rules for log processing
+ruler_configs:
+  - name: mexoms_logs
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate({job="mexoms"} |~ "ERROR|CRITICAL|FATAL"[5m])) by (service) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate in {{ $labels.service }}"
+          description: "{{ $labels.service }} is logging {{ $value }} errors per second"
+          
+      - alert: SecurityEvent
+        expr: |
+          sum(rate({job="mexoms"} |~ "SECURITY|UNAUTHORIZED|FORBIDDEN"[1m])) > 0
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Security event detected"
+          description: "Security-related log entries detected in the system"
+          
+      - alert: SlowQuery
+        expr: |
+          count_over_time({job="mexoms"} |~ "slow query" | json | query_duration_ms > 1000[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Slow database queries detected"
+          description: "More than 10 queries took over 1 second in the last 5 minutes"
+
+# Query frontend configuration
+frontend:
+  compress_responses: true
+  max_outstanding_per_tenant: 2048
+  log_queries_longer_than: 10s
+
+querier:
+  max_concurrent: 20
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 2048
+
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_idle_period: 30m
+  chunk_retain_period: 30m
+  max_chunk_age: 1h
+  chunk_target_size: 1572864
+  chunk_encoding: snappy
+  max_transfer_retries: 0
+  wal:
+    enabled: true
+    dir: /loki/wal
+    replay_memory_ceiling: 1GB
+    
+# Distributor config
+distributor:
+  ring:
+    kvstore:
+      store: inmemory
+
+# Cache config for production
+cache_config:
+  enable_fifocache: true
+  fifocache:
+    max_size_bytes: 1GB
+    validity: 24h
+  
+  background:
+    writeback_goroutines: 10
+    writeback_buffer: 10000
+    
+  memcached:
+    batch_size: 256
+    parallelism: 10
+  
+  memcached_client:
+    timeout: 500ms
+    max_idle_conns: 16
+    update_interval: 1m
+    consistent_hash: true

@@ -1,5 +1,30 @@
 # Multi-Exchange Cryptocurrency OMS Development Guide (Simplified)
 
+## CRITICAL: Real Data Only Policy
+**이 규칙은 모든 개발, 테스트, 모니터링에 적용됩니다:**
+
+1. **절대 시뮬레이션 데이터 사용 금지**
+   - Math.random(), 랜덤 생성기 사용 금지
+   - 가짜 주문 수, 가짜 메트릭 생성 금지   
+   
+2. **실제 데이터 소스만 사용**
+   - 실시간 WebSocket 스트림
+   - 실제 로그 파일
+   - 시스템 명령어 (ps, top, free)
+   - NATS 메시지 버스
+   - gRPC/REST API 응답
+   
+3. **데이터 없을 때 처리**
+   - 0 또는 "N/A" 표시
+   - 빈 상태로 유지
+   - 절대 가짜 데이터로 채우지 않음
+
+4. **금지 사항**
+   - 하드코딩된 증가값
+   - 더미 데이터
+   - 시뮬레이션된 거래
+   - 가짜 시장 데이터
+
 ## 목표
 ```markdown
 멀티거래소 및 멀티계좌 지원 고성능 암호화폐 주문관리시스템(OMS) 구축
@@ -684,6 +709,7 @@ crypto-oms/
 - ❌ Redis (메모리 + sync.Map으로 대체)
 - ❌ Docker/K8s (초기 단계 불필요)
 - ❌ 복잡한 클러스터링
+- ❌ oms-guide-bacup.md 파일은 참조 하지 않는다.
 
 ### 강화된 항목
 - ✅ 공유 메모리 (/dev/shm)

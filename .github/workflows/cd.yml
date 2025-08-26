@@ -1,0 +1,292 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - development
+        - staging
+        - production
+      
+env:
+  REGISTRY: registry.mexoms.com
+  HELM_VERSION: v3.12.0
+  KUBECTL_VERSION: v1.28.0
+
+jobs:
+  # Deploy to development environment
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'development')
+    environment:
+      name: development
+      url: https://dev.mexoms.com
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-west-2
+        
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: ${{ env.KUBECTL_VERSION }}
+        
+    - name: Configure kubectl
+      run: |
+        aws eks update-kubeconfig --name mexoms-dev --region us-west-2
+        
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+        
+    - name: Deploy with Helm
+      run: |
+        helm upgrade --install mexoms-dev ./helm/mexoms \
+          --namespace mexoms-dev \
+          --create-namespace \
+          --values ./helm/mexoms/values-dev.yaml \
+          --set image.tag=${{ github.sha }} \
+          --wait \
+          --timeout 10m
+          
+    - name: Run smoke tests
+      run: |
+        kubectl run smoke-test --image=curlimages/curl:latest --rm -i --restart=Never -- \
+          curl -f http://mexoms-dev-oms-server.mexoms-dev:8080/health
+          
+    - name: Notify deployment status
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: 'Development deployment ${{ job.status }}'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  # Deploy to staging environment
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.mexoms.com
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-west-2
+        
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: ${{ env.KUBECTL_VERSION }}
+        
+    - name: Configure kubectl
+      run: |
+        aws eks update-kubeconfig --name mexoms-staging --region us-west-2
+        
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+        
+    - name: Create staging values
+      run: |
+        cat > ./helm/mexoms/values-staging-override.yaml <<EOF
+        global:
+          environment: staging
+          domain: staging.mexoms.com
+        
+        image:
+          tag: ${{ github.sha }}
+          
+        omsServer:
+          replicaCount: 2
+          
+        secrets:
+          create: false  # Use existing secrets
+        EOF
+        
+    - name: Deploy with Helm (Blue-Green)
+      run: |
+        # Deploy to green environment
+        helm upgrade --install mexoms-staging-green ./helm/mexoms \
+          --namespace mexoms-staging \
+          --create-namespace \
+          --values ./helm/mexoms/values.yaml \
+          --values ./helm/mexoms/values-staging-override.yaml \
+          --set global.blueGreen.color=green \
+          --wait \
+          --timeout 10m
+          
+    - name: Run integration tests
+      run: |
+        kubectl run integration-test --image=mexoms/test-runner:latest --rm -i --restart=Never \
+          --env="TARGET_ENV=staging-green" -- npm test
+          
+    - name: Switch traffic to green
+      if: success()
+      run: |
+        kubectl patch ingress mexoms-staging-ingress -n mexoms-staging \
+          -p '{"spec":{"rules":[{"host":"staging.mexoms.com","http":{"paths":[{"backend":{"service":{"name":"mexoms-staging-green-oms-server"}}}]}}]}}'
+          
+    - name: Delete blue deployment
+      if: success()
+      run: |
+        helm delete mexoms-staging-blue -n mexoms-staging || true
+
+  # Deploy to production environment
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://mexoms.com
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate production deployment
+      run: |
+        # Ensure we're deploying a tagged version
+        if [[ ! "${{ github.ref }}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
+          echo "Production deployments require a semantic version tag"
+          exit 1
+        fi
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.PROD_AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.PROD_AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+        
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: ${{ env.KUBECTL_VERSION }}
+        
+    - name: Configure kubectl
+      run: |
+        aws eks update-kubeconfig --name mexoms-prod --region us-east-1
+        
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+        
+    - name: Backup current deployment
+      run: |
+        # Create backup of current deployment
+        kubectl create job backup-$(date +%Y%m%d-%H%M%S) \
+          --from=cronjob/mexoms-backup \
+          -n mexoms
+          
+    - name: Deploy with Helm (Canary)
+      run: |
+        # Deploy canary version (10% traffic)
+        helm upgrade --install mexoms-prod-canary ./helm/mexoms \
+          --namespace mexoms \
+          --create-namespace \
+          --values ./helm/mexoms/values-prod.yaml \
+          --set image.tag=${{ github.sha }} \
+          --set canary.enabled=true \
+          --set canary.weight=10 \
+          --wait \
+          --timeout 15m
+          
+    - name: Monitor canary metrics
+      run: |
+        # Wait and monitor canary deployment
+        sleep 300  # 5 minutes
+        
+        # Check error rate
+        ERROR_RATE=$(kubectl exec -n mexoms deployment/mexoms-prod-prometheus -- \
+          promtool query instant 'rate(http_requests_total{job="mexoms-canary",status=~"5.."}[5m]) / rate(http_requests_total{job="mexoms-canary"}[5m])' | \
+          jq -r '.data.result[0].value[1]')
+          
+        if (( $(echo "$ERROR_RATE > 0.01" | bc -l) )); then
+          echo "Canary error rate too high: $ERROR_RATE"
+          exit 1
+        fi
+        
+    - name: Promote canary to production
+      if: success()
+      run: |
+        # Gradually increase canary traffic
+        for weight in 25 50 75 100; do
+          helm upgrade mexoms-prod-canary ./helm/mexoms \
+            --namespace mexoms \
+            --reuse-values \
+            --set canary.weight=$weight \
+            --wait
+            
+          sleep 180  # 3 minutes between increases
+        done
+        
+        # Full production deployment
+        helm upgrade --install mexoms-prod ./helm/mexoms \
+          --namespace mexoms \
+          --values ./helm/mexoms/values-prod.yaml \
+          --set image.tag=${{ github.sha }} \
+          --wait \
+          --timeout 15m
+          
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        helm rollback mexoms-prod -n mexoms
+        kubectl delete deployment mexoms-prod-canary -n mexoms || true
+        
+    - name: Create release notes
+      if: success() && startsWith(github.ref, 'refs/tags/v')
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: |
+          Production deployment completed successfully.
+          
+          Docker images:
+          - mexoms/oms-server:${{ github.ref_name }}
+          - mexoms/binance-spot:${{ github.ref_name }}
+          - mexoms/binance-futures:${{ github.ref_name }}
+          - mexoms/monitor:${{ github.ref_name }}
+          
+          Helm chart version: ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        
+    - name: Notify deployment status
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: 'Production deployment ${{ job.status }} for version ${{ github.ref_name }}'
+        webhook_url: ${{ secrets.PROD_SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow

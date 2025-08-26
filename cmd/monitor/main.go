@@ -13,7 +13,7 @@ import (
 
 	"github.com/mExOms/internal/monitor"
 	"github.com/mExOms/internal/position"
-	"github.com/mExOms/internal/risk"
+	// "github.com/mExOms/internal/risk"
 )
 
 var (
@@ -69,7 +69,7 @@ func main() {
 	positionManager, _ := position.NewPositionManager("./data/snapshots")
 	defer positionManager.Close()
 	
-	riskEngine := risk.NewRiskEngine()
+	// riskEngine := risk.NewRiskEngine()
 
 	// Create dashboard server
 	dashboardDeps := monitor.DashboardDeps{
@@ -77,7 +77,7 @@ func main() {
 		Health:          health,
 		Logger:          logger,
 		PositionManager: positionManager,
-		RiskEngine:      riskEngine,
+		RiskEngine:      nil, // riskEngine,
 	}
 	dashboard := monitor.NewDashboardServer(*dashboardAddr, dashboardDeps)
 

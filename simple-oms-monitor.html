@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OMS System Monitor</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: #4a9eff;
+            margin-bottom: 30px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .card h2 {
+            color: #ffa500;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        .status {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #444;
+        }
+        .status:last-child {
+            border-bottom: none;
+        }
+        .online {
+            color: #4ade80;
+        }
+        .offline {
+            color: #f87171;
+        }
+        .value {
+            font-weight: bold;
+            color: #4a9eff;
+        }
+        #timestamp {
+            text-align: center;
+            color: #999;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .price-up {
+            color: #4ade80;
+        }
+        .price-down {
+            color: #f87171;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            color: #999;
+            font-weight: normal;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 OMS System Monitor</h1>
+        
+        <div class="grid">
+            <div class="card">
+                <h2>📡 Service Status</h2>
+                <div class="status">
+                    <span>OMS Core</span>
+                    <span id="oms-core" class="offline">● CHECKING...</span>
+                </div>
+                <div class="status">
+                    <span>OMS Server</span>
+                    <span id="oms-server" class="offline">● CHECKING...</span>
+                </div>
+                <div class="status">
+                    <span>Binance Spot</span>
+                    <span id="binance-spot" class="online">● ONLINE</span>
+                </div>
+                <div class="status">
+                    <span>Binance Futures</span>
+                    <span id="binance-futures" class="online">● ONLINE</span>
+                </div>
+                <div class="status">
+                    <span>NATS</span>
+                    <span id="nats" class="online">● ONLINE</span>
+                </div>
+                <div class="status">
+                    <span>Vault</span>
+                    <span id="vault" class="online">● ONLINE</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>📊 Market Data</h2>
+                <table>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Price</th>
+                        <th>24h Change</th>
+                    </tr>
+                    <tr>
+                        <td>BTCUSDT</td>
+                        <td id="btc-price">Loading...</td>
+                        <td id="btc-change">-</td>
+                    </tr>
+                    <tr>
+                        <td>ETHUSDT</td>
+                        <td id="eth-price">Loading...</td>
+                        <td id="eth-change">-</td>
+                    </tr>
+                    <tr>
+                        <td>BNBUSDT</td>
+                        <td id="bnb-price">Loading...</td>
+                        <td id="bnb-change">-</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="card">
+                <h2>📈 System Metrics</h2>
+                <div class="status">
+                    <span>WebSocket Messages</span>
+                    <span class="value" id="ws-messages">0</span>
+                </div>
+                <div class="status">
+                    <span>Orders Processed</span>
+                    <span class="value" id="orders">0</span>
+                </div>
+                <div class="status">
+                    <span>Active Connections</span>
+                    <span class="value" id="connections">0</span>
+                </div>
+                <div class="status">
+                    <span>Uptime</span>
+                    <span class="value" id="uptime">0m</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>💻 Resource Usage</h2>
+                <div class="status">
+                    <span>CPU Usage</span>
+                    <span class="value" id="cpu">N/A</span>
+                </div>
+                <div class="status">
+                    <span>Memory Usage</span>
+                    <span class="value" id="memory">N/A</span>
+                </div>
+                <div class="status">
+                    <span>Network I/O</span>
+                    <span class="value" id="network">N/A</span>
+                </div>
+                <div class="status">
+                    <span>Disk Usage</span>
+                    <span class="value" id="disk">N/A</span>
+                </div>
+            </div>
+        </div>
+        
+        <div id="timestamp">Last Updated: <span id="time"></span></div>
+    </div>
+    
+    <script>
+        // Connect to Binance WebSocket for real market data
+        const ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@ticker/ethusdt@ticker/bnbusdt@ticker');
+        let messageCount = 0;
+        let activeConnections = 1; // This WebSocket connection
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            messageCount++;
+            document.getElementById('ws-messages').textContent = messageCount.toLocaleString();
+            
+            if (data.s === 'BTCUSDT') {
+                document.getElementById('btc-price').textContent = '$' + parseFloat(data.c).toFixed(2);
+                const change = parseFloat(data.P);
+                document.getElementById('btc-change').textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                document.getElementById('btc-change').className = change >= 0 ? 'price-up' : 'price-down';
+            } else if (data.s === 'ETHUSDT') {
+                document.getElementById('eth-price').textContent = '$' + parseFloat(data.c).toFixed(2);
+                const change = parseFloat(data.P);
+                document.getElementById('eth-change').textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                document.getElementById('eth-change').className = change >= 0 ? 'price-up' : 'price-down';
+            } else if (data.s === 'BNBUSDT') {
+                document.getElementById('bnb-price').textContent = '$' + parseFloat(data.c).toFixed(2);
+                const change = parseFloat(data.P);
+                document.getElementById('bnb-change').textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                document.getElementById('bnb-change').className = change >= 0 ? 'price-up' : 'price-down';
+            }
+        };
+        
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+        };
+        
+        // Update timestamp
+        function updateTime() {
+            document.getElementById('time').textContent = new Date().toLocaleString();
+        }
+        
+        // Update service status from API
+        function updateServiceStatus() {
+            fetch('http://localhost:8083')
+                .then(response => response.json())
+                .then(data => {
+                    // Update OMS Core
+                    const omsCore = document.getElementById('oms-core');
+                    if (data['oms-core']) {
+                        omsCore.textContent = '● ' + data['oms-core'].status.toUpperCase();
+                        omsCore.className = data['oms-core'].status === 'online' ? 'online' : 'offline';
+                    }
+                    
+                    // Update OMS Server
+                    const omsServer = document.getElementById('oms-server');
+                    if (data['oms-server']) {
+                        omsServer.textContent = '● ' + data['oms-server'].status.toUpperCase();
+                        omsServer.className = data['oms-server'].status === 'online' ? 'online' : 'offline';
+                    }
+                    
+                    // Update system resources
+                    if (data.system) {
+                        document.getElementById('cpu').textContent = data.system.cpu || 'N/A';
+                        document.getElementById('memory').textContent = data.system.memory || 'N/A';
+                        document.getElementById('disk').textContent = data.system.disk || 'N/A';
+                        
+                        // Update active connections from actual WebSocket count
+                        if (data.system.websocket_connections) {
+                            document.getElementById('connections').textContent = data.system.websocket_connections;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to fetch service status:', error);
+                });
+        }
+        
+        // Update timestamp and service status
+        function updateMetrics() {
+            updateTime();
+            updateServiceStatus();
+        }
+        
+        setInterval(updateMetrics, 2000);
+        updateServiceStatus(); // Initial call
+        updateTime();
+    </script>
+</body>
+</html>

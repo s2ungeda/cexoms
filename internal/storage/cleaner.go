@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -301,6 +302,3 @@ type TypeStats struct {
 	OldestFile      time.Time `json:"oldest_file"`
 	NewestFile      time.Time `json:"newest_file"`
 }
-
-// Add missing import
-import "os/exec"

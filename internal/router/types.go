@@ -7,220 +7,162 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// RouteRequest represents a request to route an order
-type RouteRequest struct {
-	Symbol          string                 `json:"symbol"`
-	Side            types.OrderSide        `json:"side"`
-	Quantity        decimal.Decimal        `json:"quantity"`
-	OrderType       types.OrderType        `json:"order_type"`
-	Price           decimal.Decimal        `json:"price,omitempty"`           // For limit orders
-	TimeInForce     types.TimeInForce      `json:"time_in_force,omitempty"`
-	MaxSlippage     decimal.Decimal        `json:"max_slippage,omitempty"`    // Maximum acceptable slippage
-	Urgency         Urgency                `json:"urgency"`                    // How quickly to execute
-	PreferredVenues []string               `json:"preferred_venues,omitempty"` // Preferred exchanges
-	AvoidVenues     []string               `json:"avoid_venues,omitempty"`     // Exchanges to avoid
-	Strategy        RoutingStrategy        `json:"strategy"`                   // Routing strategy
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+// RoutingRequest represents a request to route an order
+type RoutingRequest struct {
+	ID           string                 `json:"id"`
+	Symbol       string                 `json:"symbol"`
+	Side         string                 `json:"side"`
+	Quantity     decimal.Decimal        `json:"quantity"`
+	OrderType    string                 `json:"order_type"`
+	Price        decimal.Decimal        `json:"price,omitempty"`
+	TimeInForce  string                 `json:"time_in_force,omitempty"`
+	Strategy     string                 `json:"strategy,omitempty"`
+	AccountID    string                 `json:"account_id,omitempty"` // Optional: specify account
+	MaxSlippage  decimal.Decimal        `json:"max_slippage,omitempty"`
+	MinExecution decimal.Decimal        `json:"min_execution,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// RouteResponse represents the routing decision
-type RouteResponse struct {
-	RequestID       string           `json:"request_id"`
-	Routes          []Route          `json:"routes"`
-	TotalQuantity   decimal.Decimal  `json:"total_quantity"`
-	EstimatedPrice  decimal.Decimal  `json:"estimated_price"`
-	EstimatedFees   decimal.Decimal  `json:"estimated_fees"`
-	EstimatedTime   time.Duration    `json:"estimated_time"`
-	Confidence      float64          `json:"confidence"` // 0.0 to 1.0
-	Warnings        []string         `json:"warnings,omitempty"`
+// RoutingResult represents the result of order routing
+type RoutingResult struct {
+	RequestID        string           `json:"request_id"`
+	Symbol           string           `json:"symbol"`
+	TotalQuantity    decimal.Decimal  `json:"total_quantity"`
+	ExecutedQuantity decimal.Decimal  `json:"executed_quantity"`
+	AveragePrice     decimal.Decimal  `json:"average_price"`
+	TotalFees        decimal.Decimal  `json:"total_fees"`
+	Routes           []*ExecutedRoute `json:"routes"`
+	StartTime        time.Time        `json:"start_time"`
+	EndTime          time.Time        `json:"end_time"`
+	Success          bool             `json:"success"`
+	Errors           []error          `json:"errors,omitempty"`
 }
 
-// Route represents a single routing path
+// ExecutedRoute represents an executed order route
+type ExecutedRoute struct {
+	Exchange         string          `json:"exchange"`
+	AccountID        string          `json:"account_id"`
+	OrderID          string          `json:"order_id"`
+	Price            decimal.Decimal `json:"price"`
+	ExecutedQuantity decimal.Decimal `json:"executed_quantity"`
+	Fees             decimal.Decimal `json:"fees"`
+	Status           string          `json:"status"`
+	ExecutedAt       time.Time       `json:"executed_at"`
+}
+
+// Route represents a potential routing option
 type Route struct {
-	Venue           string                 `json:"venue"`           // Exchange name
-	Account         string                 `json:"account"`         // Account to use
-	Market          string                 `json:"market"`          // spot/futures
-	Symbol          string                 `json:"symbol"`          // Symbol on this venue
-	Quantity        decimal.Decimal        `json:"quantity"`        // Quantity for this route
-	OrderType       types.OrderType        `json:"order_type"`
-	Price           decimal.Decimal        `json:"price,omitempty"`
-	EstimatedPrice  decimal.Decimal        `json:"estimated_price"`
-	EstimatedFee    decimal.Decimal        `json:"estimated_fee"`
-	Priority        int                    `json:"priority"`        // Execution priority
-	SplitRatio      decimal.Decimal        `json:"split_ratio"`     // Percentage of total order
-	Metadata        map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
+	Exchange           string          `json:"exchange"`
+	AccountID          string          `json:"account_id"`
+	Price              decimal.Decimal `json:"price"`
+	AvailableLiquidity decimal.Decimal `json:"available_liquidity"`
+	EstimatedFees      decimal.Decimal `json:"estimated_fees"`
+	RateLimitWeight    int             `json:"rate_limit_weight"`
+	Score              decimal.Decimal `json:"score"`
+	Priority           int             `json:"priority"`
 }
 
-// Urgency defines how quickly an order should be executed
-type Urgency string
+// AccountRoute represents an account available for routing
+type AccountRoute struct {
+	AccountID   string          `json:"account_id"`
+	Exchange    string          `json:"exchange"`
+	Available   bool            `json:"available"`
+	RateLimit   int             `json:"rate_limit"`
+	Balance     decimal.Decimal `json:"balance"`
+	Permissions []string        `json:"permissions"`
+}
 
-const (
-	UrgencyLow       Urgency = "low"        // Can wait for better prices
-	UrgencyNormal    Urgency = "normal"     // Standard execution
-	UrgencyHigh      Urgency = "high"       // Execute quickly
-	UrgencyImmediate Urgency = "immediate"  // Execute ASAP
-)
+// MarketData represents aggregated market data
+type MarketData struct {
+	Exchange    string          `json:"exchange"`
+	Symbol      string          `json:"symbol"`
+	BidPrice    decimal.Decimal `json:"bid_price"`
+	AskPrice    decimal.Decimal `json:"ask_price"`
+	BidVolume   decimal.Decimal `json:"bid_volume"`
+	AskVolume   decimal.Decimal `json:"ask_volume"`
+	Spread      decimal.Decimal `json:"spread"`
+	SpreadBps   decimal.Decimal `json:"spread_bps"`
+	Volume24h   decimal.Decimal `json:"volume_24h"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+}
 
-// RoutingStrategy defines the routing strategy
+// ArbitrageOpportunity represents a cross-exchange arbitrage opportunity
+type ArbitrageOpportunity struct {
+	ID              string                 `json:"id"`
+	Symbol          string                 `json:"symbol"`
+	BuyExchange     string                 `json:"buy_exchange"`
+	BuyAccount      string                 `json:"buy_account"`
+	SellExchange    string                 `json:"sell_exchange"`
+	SellAccount     string                 `json:"sell_account"`
+	BuyPrice        decimal.Decimal        `json:"buy_price"`
+	SellPrice       decimal.Decimal        `json:"sell_price"`
+	ProfitPercent   decimal.Decimal        `json:"profit_percent"`
+	ProfitAmount    decimal.Decimal        `json:"profit_amount"`
+	MaxQuantity     decimal.Decimal        `json:"max_quantity"`
+	RequiredCapital decimal.Decimal        `json:"required_capital"`
+	EstimatedFees   decimal.Decimal        `json:"estimated_fees"`
+	NetProfit       decimal.Decimal        `json:"net_profit"`
+	Confidence      decimal.Decimal        `json:"confidence"`
+	ExpiresAt       time.Time              `json:"expires_at"`
+	Metadata        map[string]interface{} `json:"metadata"`
+}
+
+// RoutingMetrics tracks routing performance
+type RoutingMetrics struct {
+	TotalOrders      int64           `json:"total_orders"`
+	SuccessfulOrders int64           `json:"successful_orders"`
+	FailedOrders     int64           `json:"failed_orders"`
+	TotalVolume      decimal.Decimal `json:"total_volume"`
+	TotalFees        decimal.Decimal `json:"total_fees"`
+	AverageSlippage  decimal.Decimal `json:"average_slippage"`
+	BestRoute        string          `json:"best_route"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
+// FeeStructure represents exchange fee structure
+type FeeStructure struct {
+	Exchange     string          `json:"exchange"`
+	MakerFee     decimal.Decimal `json:"maker_fee"`
+	TakerFee     decimal.Decimal `json:"taker_fee"`
+	TierLevel    int             `json:"tier_level"`
+	VolumeUSD30d decimal.Decimal `json:"volume_usd_30d"`
+}
+
+// LiquiditySnapshot represents liquidity at a point in time
+type LiquiditySnapshot struct {
+	Exchange      string          `json:"exchange"`
+	Symbol        string          `json:"symbol"`
+	BidLiquidity  []PriceLevel    `json:"bid_liquidity"`
+	AskLiquidity  []PriceLevel    `json:"ask_liquidity"`
+	TotalBidValue decimal.Decimal `json:"total_bid_value"`
+	TotalAskValue decimal.Decimal `json:"total_ask_value"`
+	Timestamp     time.Time       `json:"timestamp"`
+}
+
+// PriceLevel represents a price level in the order book
+type PriceLevel struct {
+	Price    decimal.Decimal `json:"price"`
+	Quantity decimal.Decimal `json:"quantity"`
+	Value    decimal.Decimal `json:"value"`
+}
+
+// RoutingStrategy defines different routing strategies
 type RoutingStrategy string
 
 const (
-	StrategyBestPrice      RoutingStrategy = "best_price"       // Optimize for best price
-	StrategyLowestFee      RoutingStrategy = "lowest_fee"       // Minimize fees
-	StrategyFastest        RoutingStrategy = "fastest"          // Fastest execution
-	StrategyMinSlippage    RoutingStrategy = "min_slippage"     // Minimize market impact
-	StrategyBalanced       RoutingStrategy = "balanced"         // Balance all factors
-	StrategyVWAP           RoutingStrategy = "vwap"             // Match VWAP
-	StrategyTWAP           RoutingStrategy = "twap"             // Time-weighted average
-	StrategyIceberg        RoutingStrategy = "iceberg"          // Hide large orders
+	RoutingStrategyBestPrice     RoutingStrategy = "best_price"
+	RoutingStrategyBestLiquidity RoutingStrategy = "best_liquidity"
+	RoutingStrategyLowestFee     RoutingStrategy = "lowest_fee"
+	RoutingStrategyFastest       RoutingStrategy = "fastest"
+	RoutingStrategyBalanced      RoutingStrategy = "balanced"
+	RoutingStrategyArbitrage     RoutingStrategy = "arbitrage"
 )
 
-// VenueInfo contains information about a trading venue
-type VenueInfo struct {
-	Name            string                          `json:"name"`
-	Exchange        string                          `json:"exchange"`
-	Market          string                          `json:"market"`
-	Account         string                          `json:"account"`
-	Available       bool                            `json:"available"`
-	TradingFees     TradingFees                     `json:"trading_fees"`
-	Limits          TradingLimits                   `json:"limits"`
-	SupportedOrders []types.OrderType               `json:"supported_orders"`
-	LastUpdate      time.Time                       `json:"last_update"`
-	Metadata        map[string]interface{}          `json:"metadata"`
-}
-
-// TradingFees contains fee information
-type TradingFees struct {
-	MakerFee        decimal.Decimal `json:"maker_fee"`        // As percentage (0.001 = 0.1%)
-	TakerFee        decimal.Decimal `json:"taker_fee"`
-	FeeAsset        string          `json:"fee_asset"`        // Asset used for fees
-	TierLevel       int             `json:"tier_level"`
-	Volume30d       decimal.Decimal `json:"volume_30d"`       // 30-day volume for tier
-}
-
-// TradingLimits contains trading limits
-type TradingLimits struct {
-	MinOrderSize    decimal.Decimal `json:"min_order_size"`
-	MaxOrderSize    decimal.Decimal `json:"max_order_size"`
-	MinNotional     decimal.Decimal `json:"min_notional"`     // Minimum order value
-	MaxDailyVolume  decimal.Decimal `json:"max_daily_volume"`
-	RateLimitPerMin int             `json:"rate_limit_per_min"`
-}
-
-// MarketConditions represents current market conditions
-type MarketConditions struct {
-	Symbol          string                    `json:"symbol"`
-	Timestamp       time.Time                 `json:"timestamp"`
-	Volatility      float64                   `json:"volatility"`      // 24h volatility
-	Spread          decimal.Decimal           `json:"spread"`          // Bid-ask spread
-	Liquidity       LiquidityInfo             `json:"liquidity"`
-	TrendDirection  string                    `json:"trend_direction"` // "up", "down", "sideways"
-	Volume24h       decimal.Decimal           `json:"volume_24h"`
-	OrderBooks      map[string]*types.OrderBook `json:"order_books"`     // venue -> order book
-}
-
-// LiquidityInfo contains liquidity information
-type LiquidityInfo struct {
-	BidLiquidity    []LiquidityLevel `json:"bid_liquidity"`
-	AskLiquidity    []LiquidityLevel `json:"ask_liquidity"`
-	TotalBidVolume  decimal.Decimal  `json:"total_bid_volume"`
-	TotalAskVolume  decimal.Decimal  `json:"total_ask_volume"`
-	ImbalanceRatio  decimal.Decimal  `json:"imbalance_ratio"`  // Ask/Bid ratio
-}
-
-// LiquidityLevel represents liquidity at a price level
-type LiquidityLevel struct {
-	Price           decimal.Decimal `json:"price"`
-	Volume          decimal.Decimal `json:"volume"`
-	CumulativeVolume decimal.Decimal `json:"cumulative_volume"`
-	Venues          []string        `json:"venues"` // Which venues provide this liquidity
-}
-
-// ExecutionReport represents the result of order execution
-type ExecutionReport struct {
-	RequestID       string                `json:"request_id"`
-	Status          ExecutionStatus       `json:"status"`
-	ExecutedRoutes  []ExecutedRoute       `json:"executed_routes"`
-	TotalExecuted   decimal.Decimal       `json:"total_executed"`
-	AveragePrice    decimal.Decimal       `json:"average_price"`
-	TotalFees       decimal.Decimal       `json:"total_fees"`
-	SlippageBps     int                   `json:"slippage_bps"`     // Basis points
-	ExecutionTime   time.Duration         `json:"execution_time"`
-	Timestamp       time.Time             `json:"timestamp"`
-	Errors          []string              `json:"errors,omitempty"`
-}
-
-// ExecutedRoute represents an executed route
-type ExecutedRoute struct {
-	Venue           string          `json:"venue"`
-	OrderID         string          `json:"order_id"`
-	Quantity        decimal.Decimal `json:"quantity"`
-	ExecutedQty     decimal.Decimal `json:"executed_qty"`
-	Price           decimal.Decimal `json:"price"`
-	Fee             decimal.Decimal `json:"fee"`
-	Status          string          `json:"status"`
-	Timestamp       time.Time       `json:"timestamp"`
-}
-
-// ExecutionStatus represents the execution status
-type ExecutionStatus string
-
-const (
-	ExecutionPending    ExecutionStatus = "pending"
-	ExecutionInProgress ExecutionStatus = "in_progress"
-	ExecutionCompleted  ExecutionStatus = "completed"
-	ExecutionPartial    ExecutionStatus = "partial"
-	ExecutionFailed     ExecutionStatus = "failed"
-	ExecutionCancelled  ExecutionStatus = "cancelled"
-)
-
-// RoutingConfig contains router configuration
-type RoutingConfig struct {
-	MaxVenues           int             `json:"max_venues"`            // Maximum venues to split across
-	MinSplitSize        decimal.Decimal `json:"min_split_size"`        // Minimum size for splitting
-	MaxSlippageBps      int             `json:"max_slippage_bps"`      // Maximum slippage in basis points
-	SmartRoutingEnabled bool            `json:"smart_routing_enabled"`
-	FeeOptimization     bool            `json:"fee_optimization"`
-	LiquidityThreshold  decimal.Decimal `json:"liquidity_threshold"`   // Minimum liquidity required
-	RefreshInterval     time.Duration   `json:"refresh_interval"`      // Market data refresh interval
-	ExecutionTimeout    time.Duration   `json:"execution_timeout"`
-	RetryAttempts       int             `json:"retry_attempts"`
-}
-
-// PerformanceMetrics tracks router performance
-type PerformanceMetrics struct {
-	TotalOrders         int64           `json:"total_orders"`
-	SuccessfulOrders    int64           `json:"successful_orders"`
-	FailedOrders        int64           `json:"failed_orders"`
-	AverageSlippageBps  float64         `json:"average_slippage_bps"`
-	TotalVolume         decimal.Decimal `json:"total_volume"`
-	TotalFeesSaved      decimal.Decimal `json:"total_fees_saved"`
-	AverageExecutionTime time.Duration  `json:"average_execution_time"`
-	VenueDistribution   map[string]int64 `json:"venue_distribution"`
-	StrategyPerformance map[string]*StrategyMetrics `json:"strategy_performance"`
-}
-
-// StrategyMetrics tracks performance by strategy
-type StrategyMetrics struct {
-	OrderCount         int64           `json:"order_count"`
-	SuccessRate        float64         `json:"success_rate"`
-	AverageSlippage    float64         `json:"average_slippage"`
-	AverageExecutionTime time.Duration `json:"average_execution_time"`
-}
-
-// SimulationRequest represents a request to simulate routing
-type SimulationRequest struct {
-	RouteRequest    RouteRequest     `json:"route_request"`
-	MarketScenario  string           `json:"market_scenario"`  // "normal", "volatile", "illiquid"
-	IncludeCosts    bool             `json:"include_costs"`
-}
-
-// SimulationResult represents simulation results
-type SimulationResult struct {
-	Routes          []Route         `json:"routes"`
-	ExpectedPrice   decimal.Decimal `json:"expected_price"`
-	ExpectedFees    decimal.Decimal `json:"expected_fees"`
-	ExpectedSlippage decimal.Decimal `json:"expected_slippage"`
-	ExecutionRisk   float64         `json:"execution_risk"`   // 0.0 to 1.0
-	Recommendations []string        `json:"recommendations"`
+// AccountSelection criteria for selecting accounts
+type AccountSelection struct {
+	PreferredAccounts []string        `json:"preferred_accounts"`
+	ExcludedAccounts  []string        `json:"excluded_accounts"`
+	MinBalance        decimal.Decimal `json:"min_balance"`
+	MaxPositionSize   decimal.Decimal `json:"max_position_size"`
+	RequirePermission string          `json:"require_permission"`
 }

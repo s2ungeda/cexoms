@@ -1,0 +1,120 @@
+{{- if .Values.monitor.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mexoms.fullname" . }}-monitor
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8082
+    targetPort: http
+  selector:
+    {{- include "mexoms.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mexoms.fullname" . }}-monitor
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+spec:
+  replicas: {{ .Values.monitor.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "mexoms.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: monitor
+  template:
+    metadata:
+      labels:
+        {{- include "mexoms.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: monitor
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "mexoms.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: monitor
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.monitor.image.repository }}:{{ .Values.monitor.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.monitor.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - name: http
+          containerPort: 8082
+          protocol: TCP
+        env:
+        - name: SERVICE_NAME
+          value: monitor
+        - name: NATS_URL
+          value: nats://{{ include "mexoms.nats.fullname" . }}:4222
+        - name: REDIS_ADDR
+          value: {{ include "mexoms.redis.fullname" . }}:6379
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mexoms.fullname" . }}-secrets
+              key: redis-password
+        - name: DATABASE_HOST
+          value: {{ include "mexoms.postgresql.fullname" . }}
+        - name: DATABASE_PORT
+          value: "5432"
+        - name: DATABASE_NAME
+          value: {{ .Values.postgresql.auth.database }}
+        - name: DATABASE_USER
+          value: {{ .Values.postgresql.auth.username }}
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mexoms.fullname" . }}-secrets
+              key: postgres-password
+        - name: LOG_LEVEL
+          value: {{ .Values.monitor.logLevel | default .Values.omsServer.config.logLevel }}
+        - name: PROMETHEUS_ADDR
+          value: "http://{{ include "mexoms.fullname" . }}-prometheus:9090"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.monitor.resources | nindent 10 }}
+      volumes:
+      - name: logs
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

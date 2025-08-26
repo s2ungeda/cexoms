@@ -1,0 +1,219 @@
+# Default values for mexoms
+# This is a YAML-formatted file.
+
+global:
+  namespace: mexoms
+  environment: production
+  domain: mexoms.com
+  
+# OMS Server configuration
+omsServer:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: mexoms/oms-server
+    tag: latest
+    pullPolicy: Always
+  
+  service:
+    type: LoadBalancer
+    httpPort: 8080
+    grpcPort: 9090
+    metricsPort: 8081
+  
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+    limits:
+      memory: "4Gi"
+      cpu: "2"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  config:
+    logLevel: info
+    workerThreads: 8
+    bufferSize: 10000
+    
+# Exchange Connectors
+binanceSpot:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: mexoms/binance-spot
+    tag: latest
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+      
+binanceFutures:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: mexoms/binance-futures
+    tag: latest
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Infrastructure components
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "changeme-root-password"
+    username: mexoms
+    password: "changeme-password"
+    database: mexoms
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "fast-ssd"
+      size: 100Gi
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+        
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "changeme-redis-password"
+  master:
+    persistence:
+      enabled: true
+      storageClass: "fast-ssd"
+      size: 10Gi
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1"
+        
+nats:
+  enabled: true
+  nats:
+    jetstream:
+      enabled: true
+      memStorage:
+        enabled: true
+        size: 1Gi
+      fileStorage:
+        enabled: true
+        size: 10Gi
+        storageDirectory: /data/jetstream
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+        
+vault:
+  enabled: true
+  server:
+    ha:
+      enabled: true
+      replicas: 3
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+        
+# Monitoring
+prometheus:
+  enabled: true
+  retention: 30d
+  storageSize: 50Gi
+  
+grafana:
+  enabled: true
+  adminPassword: "changeme-grafana-password"
+  persistence:
+    enabled: true
+    size: 10Gi
+    
+# Security
+security:
+  tls:
+    enabled: true
+    certManager:
+      enabled: true
+      issuer: letsencrypt-prod
+  networkPolicy:
+    enabled: true
+  podSecurityPolicy:
+    enabled: true
+  rbac:
+    create: true
+    
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: api.mexoms.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: oms-server
+          port: 8080
+    - host: grpc.mexoms.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: oms-server
+          port: 9090
+  tls:
+    - secretName: mexoms-tls
+      hosts:
+        - api.mexoms.com
+        - grpc.mexoms.com
+        
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: 7  # Days
+  
+# Resource quotas
+resourceQuota:
+  enabled: true
+  limits:
+    cpu: "200"
+    memory: "200Gi"
+    persistentvolumeclaims: "20"
+    
+# Pod disruption budgets
+podDisruptionBudget:
+  enabled: true
+  minAvailable:
+    omsServer: 2
+    binanceSpot: 1
+    binanceFutures: 1

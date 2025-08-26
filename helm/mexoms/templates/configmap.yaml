@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mexoms.fullname" . }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      host: 0.0.0.0
+      port: {{ .Values.omsServer.service.httpPort }}
+      grpc_port: {{ .Values.omsServer.service.grpcPort }}
+      metrics_port: {{ .Values.omsServer.service.metricsPort }}
+      mode: {{ .Values.global.environment }}
+      
+    database:
+      host: {{ include "mexoms.postgresql.fullname" . }}
+      port: 5432
+      name: {{ .Values.postgresql.auth.database }}
+      user: {{ .Values.postgresql.auth.username }}
+      sslmode: require
+      max_connections: 100
+      max_idle_connections: 10
+      connection_max_lifetime: 30m
+      
+    redis:
+      host: {{ include "mexoms.redis.fullname" . }}
+      port: 6379
+      db: 0
+      pool_size: 100
+      min_idle_conns: 10
+      
+    nats:
+      servers:
+        - nats://{{ include "mexoms.nats.fullname" . }}:4222
+      cluster_id: mexoms-cluster
+      client_id: oms-server
+      
+    monitoring:
+      prometheus_enabled: {{ .Values.prometheus.enabled }}
+      tracing_enabled: true
+      logging_level: {{ .Values.omsServer.config.logLevel }}
+      
+    security:
+      jwt_secret_key_ref: jwt-secret
+      api_key_header: X-API-Key
+      cors_enabled: true
+      cors_origins:
+        - "https://app.{{ .Values.global.domain }}"
+        - "https://api.{{ .Values.global.domain }}"
+        
+    performance:
+      worker_threads: {{ .Values.omsServer.config.workerThreads }}
+      buffer_size: {{ .Values.omsServer.config.bufferSize }}
+      batch_size: 100
+      
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mexoms.fullname" . }}-scripts
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "mexoms.labels" . | nindent 4 }}
+data:
+  init-db.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "Initializing database..."
+    
+    # Wait for PostgreSQL to be ready
+    until pg_isready -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER; do
+      echo "Waiting for PostgreSQL..."
+      sleep 2
+    done
+    
+    # Create database if not exists
+    psql -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.postgresql.auth.database }}'" | grep -q 1 || \
+    psql -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER -c "CREATE DATABASE {{ .Values.postgresql.auth.database }}"
+    
+    # Run migrations
+    echo "Running migrations..."
+    /app/bin/migrate up
+    
+    echo "Database initialization complete"
+    
+  health-check.sh: |
+    #!/bin/bash
+    # Health check script
+    
+    # Check HTTP endpoint
+    curl -f http://localhost:{{ .Values.omsServer.service.httpPort }}/api/v1/health || exit 1
+    
+    # Check gRPC endpoint
+    grpc_health_probe -addr=:{{ .Values.omsServer.service.grpcPort }} || exit 1
+    
+    # Check database connection
+    nc -zv {{ include "mexoms.postgresql.fullname" . }} 5432 || exit 1
+    
+    # Check Redis connection
+    nc -zv {{ include "mexoms.redis.fullname" . }} 6379 || exit 1
+    
+    # Check NATS connection
+    nc -zv {{ include "mexoms.nats.fullname" . }} 4222 || exit 1
+    
+    exit 0
