@@ -1,0 +1,48 @@
+FROM golang:1.21 as backend-builder
+
+WORKDIR /app
+
+# Copy go mod files
+COPY server/go.mod server/go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY server/main_real.go ./
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o oms-dashboard-real .
+
+# Frontend build stage
+FROM node:18-alpine as frontend-builder
+
+WORKDIR /app
+
+# Copy package files
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm install --legacy-peer-deps
+
+# Copy source code
+COPY frontend/ ./
+
+# Build for production
+ENV REACT_APP_WS_URL=ws://localhost:8080/ws
+RUN npm run build
+
+# Final stage
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /app
+
+# Copy backend binary
+COPY --from=backend-builder /app/oms-dashboard-real .
+
+# Copy frontend build
+COPY --from=frontend-builder /app/build ./dashboard/frontend/build
+
+# Expose port
+EXPOSE 8080
+
+# Run the application
+CMD ["./oms-dashboard-real"]

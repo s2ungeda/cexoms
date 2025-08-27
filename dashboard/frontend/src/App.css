@@ -1,0 +1,180 @@
+@import '~antd/dist/reset.css';
+
+.logo {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ant-layout-sider {
+  background: #001529;
+}
+
+.ant-menu-dark {
+  background: #001529;
+}
+
+.stat-card {
+  background: #f0f2f5;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  margin: 10px 0;
+}
+
+.positive {
+  color: #52c41a;
+}
+
+.negative {
+  color: #f5222d;
+}
+
+.chart-container {
+  position: relative;
+  height: 400px;
+  margin: 20px 0;
+}
+
+.order-row-new {
+  background-color: #e6f7ff;
+}
+
+.order-row-filled {
+  background-color: #f6ffed;
+}
+
+.order-row-cancelled {
+  background-color: #fff1f0;
+}
+
+.position-row-profit {
+  background-color: #f6ffed;
+}
+
+.position-row-loss {
+  background-color: #fff1f0;
+}
+
+.metric-card {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.metric-title {
+  color: #8c8c8c;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.metric-value {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.metric-suffix {
+  font-size: 14px;
+  font-weight: normal;
+  color: #8c8c8c;
+}
+
+.system-status-ok {
+  color: #52c41a;
+}
+
+.system-status-warning {
+  color: #faad14;
+}
+
+.system-status-error {
+  color: #f5222d;
+}
+
+.realtime-update {
+  animation: highlight 1s ease-in-out;
+}
+
+@keyframes highlight {
+  0% {
+    background-color: #ffd591;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.price-ticker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.price-up {
+  color: #52c41a;
+}
+
+.price-down {
+  color: #f5222d;
+}
+
+.orderbook-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.bids {
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.asks {
+  background: rgba(245, 34, 45, 0.1);
+}
+
+.orderbook-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.orderbook-header {
+  font-weight: bold;
+  border-bottom: 1px solid #e8e8e8;
+  margin-bottom: 8px;
+}
+
+.risk-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.risk-low {
+  background-color: #52c41a;
+}
+
+.risk-medium {
+  background-color: #faad14;
+}
+
+.risk-high {
+  background-color: #f5222d;
+}
