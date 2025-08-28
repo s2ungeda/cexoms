@@ -1,8 +1,8 @@
-# WebSocket Streaming Tutorial
+# WebSocket Streaming Guide
 
-## Objective
+## Overview
 
-Learn how to connect to real-time WebSocket streams for market data, order updates, and account changes across multiple exchanges.
+mExOms provides real-time data streaming through WebSocket connections for market data, order updates, and account changes. This guide covers how to connect and consume these streams.
 
 ## Prerequisites
 
