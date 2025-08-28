@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Debug</title>
+</head>
+<body>
+    <h1>WebSocket Debug</h1>
+    <div id="status">Connecting...</div>
+    <pre id="messages"></pre>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:8080/ws');
+        const messages = [];
+        
+        function addMessage(msg) {
+            messages.unshift(msg);
+            if (messages.length > 20) messages.pop();
+            document.getElementById('messages').innerText = messages.join('\n');
+        }
+
+        ws.onopen = () => {
+            document.getElementById('status').textContent = 'Connected';
+            addMessage('Connected to WebSocket');
+            
+            ws.send(JSON.stringify({
+                type: 'subscribe',
+                channels: ['market']
+            }));
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'market_update') {
+                    const data = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
+                    addMessage(`Market: ${data.symbol} - Price: ${data.price} (type: ${typeof data.price})`);
+                    console.log('Full data:', data);
+                } else {
+                    addMessage(`${msg.type}: ${JSON.stringify(msg).substring(0, 100)}`);
+                }
+            } catch (e) {
+                addMessage('Parse error: ' + e.message);
+            }
+        };
+
+        ws.onerror = (err) => {
+            addMessage('Error: ' + err);
+        };
+
+        ws.onclose = () => {
+            document.getElementById('status').textContent = 'Disconnected';
+        };
+    </script>
+</body>
+</html>

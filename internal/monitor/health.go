@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
+	
+	"github.com/mExOms/pkg/nats"
+	"go.uber.org/zap"
 )
 
 // HealthStatus represents the health status of a component
@@ -37,6 +41,16 @@ type SystemHealth struct {
 	Version     string            `json:"version"`
 	Uptime      string            `json:"uptime"`
 	Timestamp   time.Time         `json:"timestamp"`
+	Metrics     SystemMetrics     `json:"metrics"`
+}
+
+// SystemMetrics represents system-wide metrics
+type SystemMetrics struct {
+	CPUUsage      float64 `json:"cpu_usage"`
+	MemoryUsageMB int64   `json:"memory_usage_mb"`
+	Goroutines    int     `json:"goroutines"`
+	HeapAllocMB   int64   `json:"heap_alloc_mb"`
+	HeapSysMB     int64   `json:"heap_sys_mb"`
 }
 
 // HealthChecker manages health checks
@@ -53,17 +67,34 @@ type HealthChecker struct {
 	// System info
 	startTime time.Time
 	version   string
+	
+	// NATS publishing
+	natsClient    *nats.Client
+	logger        *zap.Logger
+	publishTicker *time.Ticker
+	stopPublish   chan struct{}
 }
 
 // NewHealthChecker creates a new health checker
-func NewHealthChecker(version string) *HealthChecker {
-	return &HealthChecker{
-		checks:      make(map[string]HealthCheck),
-		lastResults: make(map[string]ComponentHealth),
-		cacheExpiry: 10 * time.Second,
-		startTime:   time.Now(),
-		version:     version,
+func NewHealthChecker(version string, natsClient *nats.Client, logger *zap.Logger) *HealthChecker {
+	hc := &HealthChecker{
+		checks:        make(map[string]HealthCheck),
+		lastResults:   make(map[string]ComponentHealth),
+		cacheExpiry:   10 * time.Second,
+		startTime:     time.Now(),
+		version:       version,
+		natsClient:    natsClient,
+		logger:        logger,
+		publishTicker: time.NewTicker(5 * time.Second),
+		stopPublish:   make(chan struct{}),
 	}
+	
+	// Start publishing health metrics
+	if natsClient != nil {
+		go hc.publishHealthMetrics()
+	}
+	
+	return hc
 }
 
 // RegisterCheck registers a health check
@@ -140,6 +171,7 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context) SystemHealth {
 		Version:    hc.version,
 		Uptime:     time.Since(hc.startTime).String(),
 		Timestamp:  time.Now(),
+		Metrics:    hc.collectSystemMetrics(),
 	}
 }
 
@@ -299,4 +331,88 @@ func RiskEngineHealthCheck() HealthCheck {
 			},
 		}
 	}
+}
+
+// collectSystemMetrics collects system-wide metrics
+func (hc *HealthChecker) collectSystemMetrics() SystemMetrics {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	
+	return SystemMetrics{
+		CPUUsage:      getCPUUsage(),
+		MemoryUsageMB: int64(m.Alloc / 1024 / 1024),
+		Goroutines:    runtime.NumGoroutine(),
+		HeapAllocMB:   int64(m.HeapAlloc / 1024 / 1024),
+		HeapSysMB:     int64(m.HeapSys / 1024 / 1024),
+	}
+}
+
+// getCPUUsage returns approximate CPU usage percentage
+func getCPUUsage() float64 {
+	// In a real implementation, this would track CPU usage over time
+	// For now, return a mock value
+	return 45.2
+}
+
+// publishHealthMetrics publishes health metrics to NATS periodically
+func (hc *HealthChecker) publishHealthMetrics() {
+	for {
+		select {
+		case <-hc.publishTicker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			health := hc.CheckHealth(ctx)
+			cancel()
+			
+			// Publish to NATS
+			if err := hc.publishHealth(health); err != nil {
+				hc.logger.Error("Failed to publish health metrics", zap.Error(err))
+			}
+			
+		case <-hc.stopPublish:
+			return
+		}
+	}
+}
+
+// publishHealth publishes health status to NATS
+func (hc *HealthChecker) publishHealth(health SystemHealth) error {
+	if hc.natsClient == nil {
+		return nil
+	}
+	
+	// Publish overall health
+	data, err := json.Marshal(health)
+	if err != nil {
+		return fmt.Errorf("failed to marshal health: %w", err)
+	}
+	
+	subject := "oms.health.system"
+	if err := hc.natsClient.Publish(subject, data); err != nil {
+		return fmt.Errorf("failed to publish to NATS: %w", err)
+	}
+	
+	// Publish component-specific health
+	for _, component := range health.Components {
+		componentData, err := json.Marshal(component)
+		if err != nil {
+			continue
+		}
+		
+		componentSubject := fmt.Sprintf("oms.health.component.%s", component.Name)
+		if err := hc.natsClient.Publish(componentSubject, componentData); err != nil {
+			hc.logger.Warn("Failed to publish component health", 
+				zap.String("component", component.Name),
+				zap.Error(err))
+		}
+	}
+	
+	return nil
+}
+
+// Stop stops the health checker
+func (hc *HealthChecker) Stop() {
+	if hc.publishTicker != nil {
+		hc.publishTicker.Stop()
+	}
+	close(hc.stopPublish)
 }

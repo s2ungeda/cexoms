@@ -1,14 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Tag, Row, Col, Statistic, Progress, Button } from 'antd';
+import { Table, Card, Tag, Row, Col, Statistic, Progress, Button, Tabs } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, DollarOutlined } from '@ant-design/icons';
 import { Bar } from 'react-chartjs-2';
 import WebSocketService from '../services/WebSocketService';
 
+const { TabPane } = Tabs;
+
 const Positions = () => {
   const [positions, setPositions] = useState([]);
+  const [spotBalances, setSpotBalances] = useState([]);
+  const [futuresPositions, setFuturesPositions] = useState([]);
   const [totalPnL, setTotalPnL] = useState(0);
   const [totalValue, setTotalValue] = useState(0);
   const [profitablePositions, setProfitablePositions] = useState(0);
+  const [spotTotalValue, setSpotTotalValue] = useState(0);
+  const [futuresUnrealizedPnL, setFuturesUnrealizedPnL] = useState(0);
+  const [futuresAccountBalance, setFuturesAccountBalance] = useState(0);
+  const [futuresAvailableBalance, setFuturesAvailableBalance] = useState(0);
 
   useEffect(() => {
     const handlePositionUpdate = (data) => {
@@ -31,12 +39,49 @@ const Positions = () => {
       }
     };
 
+    const handleBalanceUpdate = (data) => {
+      console.log('Balance update received:', data);
+      // Parse data if it's a string
+      const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+      console.log('Parsed balance data:', parsedData);
+      
+      if (parsedData.balances) {
+        console.log('Setting spot balances:', parsedData.balances);
+        console.log('Total USD value:', parsedData.total_usd_value);
+        setSpotBalances(parsedData.balances);
+        setSpotTotalValue(parsedData.total_usd_value || 0);
+      }
+    };
+
+    const handleFuturesPositionUpdate = (data) => {
+      console.log('Futures position update received:', data);
+      // Parse data if it's a string
+      const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+      console.log('Parsed futures data:', parsedData);
+      
+      if (parsedData.positions) {
+        setFuturesPositions(parsedData.positions);
+        setFuturesUnrealizedPnL(parsedData.total_unrealized_pnl || 0);
+      }
+      
+      // Handle futures balances
+      if (parsedData.account_type === 'futures') {
+        console.log('Setting futures balances:', parsedData.account_balance, parsedData.available_balance);
+        setFuturesAccountBalance(parsedData.account_balance || 0);
+        setFuturesAvailableBalance(parsedData.available_balance || 0);
+      }
+    };
+
     WebSocketService.onPositionUpdate(handlePositionUpdate);
+    WebSocketService.on('balance_update', handleBalanceUpdate);
+    WebSocketService.on('futures_position_update', handleFuturesPositionUpdate);
 
     // Initial positions will come from real OMS via WebSocket
 
     return () => {
       WebSocketService.off('position_update', handlePositionUpdate);
+      WebSocketService.off('balance_update', handleBalanceUpdate);
+      WebSocketService.off('futures_position_update', handleFuturesPositionUpdate);
     };
   }, []);
 
@@ -62,11 +107,6 @@ const Positions = () => {
   const handleClosePosition = (symbol) => {
     console.log('Closing position:', symbol);
     // In real app, this would send a close order
-  };
-
-  const handleCloseAll = () => {
-    console.log('Closing all positions');
-    // In real app, this would send close orders for all positions
   };
 
   const columns = [
@@ -208,6 +248,127 @@ const Positions = () => {
     return record.unrealizedPnL >= 0 ? 'position-row-profit' : 'position-row-loss';
   };
 
+  // Spot Balance columns
+  const spotColumns = [
+    {
+      title: 'Asset',
+      dataIndex: 'asset',
+      key: 'asset',
+      width: 100,
+    },
+    {
+      title: 'Free',
+      dataIndex: 'free',
+      key: 'free',
+      width: 120,
+      align: 'right',
+      render: (value) => value?.toFixed(8) || '0',
+    },
+    {
+      title: 'Locked',
+      dataIndex: 'locked',
+      key: 'locked',
+      width: 120,
+      align: 'right',
+      render: (value) => value?.toFixed(8) || '0',
+    },
+    {
+      title: 'Total',
+      dataIndex: 'total',
+      key: 'total',
+      width: 120,
+      align: 'right',
+      render: (value) => value?.toFixed(8) || '0',
+    },
+    {
+      title: 'USD Value',
+      dataIndex: 'usd_value',
+      key: 'usd_value',
+      width: 120,
+      align: 'right',
+      render: (value) => `$${value?.toFixed(2) || '0'}`,
+    },
+  ];
+
+  // Futures Position columns
+  const futuresColumns = [
+    {
+      title: 'Symbol',
+      dataIndex: 'symbol',
+      key: 'symbol',
+      width: 100,
+    },
+    {
+      title: 'Side',
+      dataIndex: 'side',
+      key: 'side',
+      width: 80,
+      render: (side) => (
+        <Tag color={side === 'LONG' ? 'green' : 'red'}>{side}</Tag>
+      ),
+    },
+    {
+      title: 'Size',
+      dataIndex: 'quantity',
+      key: 'quantity',
+      width: 100,
+      align: 'right',
+      render: (value) => value?.toFixed(3) || '0',
+    },
+    {
+      title: 'Entry Price',
+      dataIndex: 'entry_price',
+      key: 'entry_price',
+      width: 100,
+      align: 'right',
+      render: (price) => `$${price?.toFixed(2) || '0'}`,
+    },
+    {
+      title: 'Mark Price',
+      dataIndex: 'mark_price',
+      key: 'mark_price',
+      width: 100,
+      align: 'right',
+      render: (price) => `$${price?.toFixed(2) || '0'}`,
+    },
+    {
+      title: 'PNL',
+      dataIndex: 'unrealized_pnl',
+      key: 'unrealized_pnl',
+      width: 120,
+      align: 'right',
+      render: (pnl, record) => (
+        <span className={pnl >= 0 ? 'positive' : 'negative'}>
+          ${Math.abs(pnl || 0).toFixed(2)} ({(record.percentage || 0).toFixed(2)}%)
+        </span>
+      ),
+    },
+    {
+      title: 'Margin',
+      dataIndex: 'initial_margin',
+      key: 'initial_margin',
+      width: 100,
+      align: 'right',
+      render: (value) => `$${value?.toFixed(2) || '0'}`,
+    },
+    {
+      title: 'Liq. Price',
+      dataIndex: 'liquidation_price',
+      key: 'liquidation_price',
+      width: 100,
+      align: 'right',
+      render: (price) => price > 0 ? `$${price.toFixed(2)}` : '-',
+    },
+    {
+      title: 'Leverage',
+      dataIndex: 'leverage',
+      key: 'leverage',
+      width: 80,
+      align: 'center',
+      render: (value) => `${value}x`,
+    },
+  ];
+
   return (
     <div>
       <Row gutter={16}>
@@ -261,21 +422,96 @@ const Positions = () => {
 
       <Card 
         style={{ marginTop: 16 }}
-        title="Open Positions"
-        extra={
-          <Button danger onClick={handleCloseAll}>
-            Close All Positions
-          </Button>
-        }
+        title="Portfolio"
       >
-        <Table
-          columns={columns}
-          dataSource={positions}
-          rowKey="symbol"
-          rowClassName={rowClassName}
-          scroll={{ x: 1300 }}
-          pagination={false}
-        />
+        <Tabs defaultActiveKey="futures">
+          <TabPane tab="Spot Balances" key="spot">
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={24}>
+                <Card>
+                  <Statistic
+                    title="Total Spot Value"
+                    value={spotTotalValue}
+                    prefix={<DollarOutlined />}
+                    precision={2}
+                  />
+                </Card>
+              </Col>
+            </Row>
+            <Table
+              columns={spotColumns}
+              dataSource={spotBalances}
+              rowKey="asset"
+              pagination={false}
+              scroll={{ x: 700 }}
+            />
+          </TabPane>
+          
+          <TabPane tab="Futures Positions" key="futures">
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={6}>
+                <Card>
+                  <Statistic
+                    title="Account Balance"
+                    value={futuresAccountBalance}
+                    precision={2}
+                    prefix={<DollarOutlined />}
+                  />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card>
+                  <Statistic
+                    title="Available Balance"
+                    value={futuresAvailableBalance}
+                    precision={2}
+                    prefix={<DollarOutlined />}
+                  />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card>
+                  <Statistic
+                    title="Total Unrealized PNL"
+                    value={futuresUnrealizedPnL}
+                    precision={2}
+                    valueStyle={{ color: futuresUnrealizedPnL >= 0 ? '#3f8600' : '#cf1322' }}
+                    prefix={futuresUnrealizedPnL >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                    suffix="USD"
+                  />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card>
+                  <Statistic
+                    title="Open Positions"
+                    value={futuresPositions.length}
+                    suffix="positions"
+                  />
+                </Card>
+              </Col>
+            </Row>
+            <Table
+              columns={futuresColumns}
+              dataSource={futuresPositions}
+              rowKey="symbol"
+              rowClassName={(record) => record.unrealized_pnl >= 0 ? 'position-row-profit' : 'position-row-loss'}
+              pagination={false}
+              scroll={{ x: 1000 }}
+            />
+          </TabPane>
+          
+          <TabPane tab="Trading Positions" key="trading">
+            <Table
+              columns={columns}
+              dataSource={positions}
+              rowKey="symbol"
+              rowClassName={rowClassName}
+              scroll={{ x: 1300 }}
+              pagination={false}
+            />
+          </TabPane>
+        </Tabs>
       </Card>
 
       <Row gutter={16} style={{ marginTop: 16 }}>

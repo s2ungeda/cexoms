@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard Test</title>
+</head>
+<body>
+    <h1>OMS Dashboard Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="market-data"></div>
+    <div id="positions"></div>
+    <div id="orders"></div>
+    <div id="logs"></div>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:8080/ws');
+        const logs = [];
+        
+        function log(message) {
+            const timestamp = new Date().toISOString();
+            logs.unshift(`${timestamp}: ${message}`);
+            if (logs.length > 50) logs.pop();
+            document.getElementById('logs').innerHTML = '<h3>Logs:</h3><pre>' + logs.join('\n') + '</pre>';
+        }
+
+        ws.onopen = (event) => {
+            document.getElementById('status').textContent = 'Connected! Subscribing to channels...';
+            log('WebSocket connected');
+            
+            // Subscribe to all channels
+            ws.send(JSON.stringify({
+                type: 'subscribe',
+                channels: ['orders', 'positions', 'market', 'system', 'risk']
+            }));
+            log('Sent subscription request');
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                log(`Received message type: ${message.type}`);
+                
+                if (message.type === 'subscribed') {
+                    document.getElementById('status').textContent = 'Connected and subscribed to: ' + message.channels.join(', ');
+                    log('Successfully subscribed to channels: ' + message.channels.join(', '));
+                } else if (message.type === 'market_update') {
+                    const data = JSON.parse(message.data);
+                    log(`Market update for ${data.symbol}: $${data.price}`);
+                    
+                    // Update market data display
+                    const marketDiv = document.getElementById('market-data');
+                    const existing = marketDiv.querySelector(`[data-symbol="${data.symbol}"]`);
+                    const html = `<div data-symbol="${data.symbol}">${data.symbol}: $${data.price} (${data.change_pct > 0 ? '+' : ''}${data.change_pct}%)</div>`;
+                    
+                    if (existing) {
+                        existing.outerHTML = html;
+                    } else {
+                        if (!marketDiv.querySelector('h3')) {
+                            marketDiv.innerHTML = '<h3>Market Data:</h3>';
+                        }
+                        marketDiv.innerHTML += html;
+                    }
+                } else if (message.type === 'position_update') {
+                    const data = JSON.parse(message.data);
+                    log(`Position update: ${JSON.stringify(data)}`);
+                    document.getElementById('positions').innerHTML = '<h3>Positions:</h3><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else if (message.type === 'order_update') {
+                    const data = JSON.parse(message.data);
+                    log(`Order update: ${JSON.stringify(data)}`);
+                    document.getElementById('orders').innerHTML = '<h3>Orders:</h3><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                log('Error parsing message: ' + error.message);
+                console.error('Error:', error, 'Raw message:', event.data);
+            }
+        };
+
+        ws.onerror = (event) => {
+            document.getElementById('status').textContent = 'WebSocket error occurred';
+            log('WebSocket error: ' + event);
+        };
+
+        ws.onclose = (event) => {
+            document.getElementById('status').textContent = 'Disconnected from WebSocket';
+            log('WebSocket closed');
+        };
+    </script>
+</body>
+</html>

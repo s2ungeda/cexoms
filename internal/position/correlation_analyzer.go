@@ -1,6 +1,7 @@
 package position
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -376,8 +377,8 @@ func (ca *CorrelationAnalyzer) calculateDirectionAlignment(acc1, acc2 *AccountPo
 		if pos2, exists := acc2.Positions[symbol]; exists {
 			totalCommon++
 			// Same direction if both long or both short
-			if (pos1.Quantity > 0 && pos2.Quantity > 0) ||
-			   (pos1.Quantity < 0 && pos2.Quantity < 0) {
+			if (pos1.Amount.IsPositive() && pos2.Amount.IsPositive()) ||
+			   (pos1.Amount.IsNegative() && pos2.Amount.IsNegative()) {
 				sameDirection++
 			}
 		}

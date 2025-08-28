@@ -11,7 +11,9 @@ import (
 	"time"
 	"unsafe"
 	
+	"github.com/mExOms/pkg/nats"
 	"github.com/shopspring/decimal"
+	"go.uber.org/zap"
 )
 
 // SharedMemoryPosition represents position data in shared memory
@@ -54,6 +56,20 @@ type PositionManager struct {
 	
 	// Market prices cache
 	markPrices   sync.Map // key: "exchange:symbol" -> decimal.Decimal
+	
+	// NATS client for publishing position updates
+	natsClient  *nats.Client
+	logger      *zap.Logger
+}
+
+// PositionUpdateEvent represents a position update event for NATS
+type PositionUpdateEvent struct {
+	EventType     string          `json:"event_type"`  // OPEN, UPDATE, CLOSE, LIQUIDATED
+	Position      *Position       `json:"position"`
+	Timestamp     time.Time       `json:"timestamp"`
+	PrevQuantity  decimal.Decimal `json:"prev_quantity,omitempty"`
+	PrevMarkPrice decimal.Decimal `json:"prev_mark_price,omitempty"`
+	PrevPnL       decimal.Decimal `json:"prev_pnl,omitempty"`
 }
 
 // Position represents a trading position
@@ -88,12 +104,14 @@ type AggregatedPosition struct {
 }
 
 // NewPositionManager creates a new position manager with shared memory
-func NewPositionManager(snapshotDir string) (*PositionManager, error) {
+func NewPositionManager(snapshotDir string, natsClient *nats.Client, logger *zap.Logger) (*PositionManager, error) {
 	pm := &PositionManager{
 		maxPositions:     1000, // Support up to 1000 positions
 		snapshotDir:      snapshotDir,
 		snapshotInterval: 5 * time.Minute,
 		stopSnapshot:     make(chan struct{}),
+		natsClient:       natsClient,
+		logger:           logger,
 	}
 	
 	// Initialize shared memory
@@ -104,7 +122,7 @@ func NewPositionManager(snapshotDir string) (*PositionManager, error) {
 	// Load existing snapshot
 	if err := pm.loadSnapshot(); err != nil {
 		// Log error but continue
-		fmt.Printf("Warning: failed to load snapshot: %v\n", err)
+		logger.Warn("Failed to load snapshot", zap.Error(err))
 	}
 	
 	// Start snapshot routine
@@ -147,7 +165,7 @@ func (pm *PositionManager) initSharedMemory() error {
 	// Lock memory to prevent swapping (for performance)
 	if err := syscall.Mlock(data); err != nil {
 		// Non-critical error
-		fmt.Printf("Warning: failed to lock memory: %v\n", err)
+		pm.logger.Warn("Failed to lock memory", zap.Error(err))
 	}
 	
 	return nil
@@ -162,6 +180,21 @@ func (pm *PositionManager) UpdatePosition(pos *Position) error {
 	}()
 	
 	key := fmt.Sprintf("%s:%s", pos.Exchange, pos.Symbol)
+	
+	// Check if this is a new position or update
+	var prevPosition *Position
+	var eventType string
+	if val, exists := pm.positions.Load(key); exists {
+		prevPosition = val.(*Position)
+		eventType = "UPDATE"
+		
+		// Check if position is being closed
+		if pos.Quantity.IsZero() && !prevPosition.Quantity.IsZero() {
+			eventType = "CLOSE"
+		}
+	} else {
+		eventType = "OPEN"
+	}
 	
 	// Calculate derived fields
 	pos.PositionValue = pos.Quantity.Abs().Mul(pos.MarkPrice)
@@ -188,6 +221,26 @@ func (pm *PositionManager) UpdatePosition(pos *Position) error {
 	// Update shared memory
 	if err := pm.updateSharedMemory(pos); err != nil {
 		return fmt.Errorf("failed to update shared memory: %w", err)
+	}
+	
+	// Publish position update event
+	event := PositionUpdateEvent{
+		EventType: eventType,
+		Position:  pos,
+		Timestamp: time.Now(),
+	}
+	
+	if prevPosition != nil {
+		event.PrevQuantity = prevPosition.Quantity
+		event.PrevMarkPrice = prevPosition.MarkPrice
+		event.PrevPnL = prevPosition.UnrealizedPnL
+	}
+	
+	if err := pm.publishPositionEvent(event); err != nil {
+		pm.logger.Error("Failed to publish position event", 
+			zap.Error(err), 
+			zap.String("exchange", pos.Exchange),
+			zap.String("symbol", pos.Symbol))
 	}
 	
 	return nil
@@ -472,8 +525,9 @@ func (pm *PositionManager) loadSnapshot() error {
 		pm.updateSharedMemory(pos)
 	}
 	
-	fmt.Printf("Loaded snapshot from %s with %d positions\n", 
-		snapshot.Timestamp.Format("2006-01-02 15:04:05"), len(snapshot.Positions))
+	pm.logger.Info("Loaded snapshot", 
+		zap.Time("timestamp", snapshot.Timestamp),
+		zap.Int("positions", len(snapshot.Positions)))
 	
 	return nil
 }
@@ -487,7 +541,7 @@ func (pm *PositionManager) snapshotRoutine() {
 		select {
 		case <-ticker.C:
 			if err := pm.SaveSnapshot(); err != nil {
-				fmt.Printf("Failed to save snapshot: %v\n", err)
+				pm.logger.Error("Failed to save snapshot", zap.Error(err))
 			}
 		case <-pm.stopSnapshot:
 			return
@@ -516,6 +570,110 @@ func (pm *PositionManager) Close() error {
 	}
 	
 	return nil
+}
+
+// publishPositionEvent publishes position event to NATS
+func (pm *PositionManager) publishPositionEvent(event PositionUpdateEvent) error {
+	if pm.natsClient == nil {
+		return nil // NATS client not configured
+	}
+	
+	// Subject format: position.update.{exchange}.{market}.{symbol}
+	subject := fmt.Sprintf("position.update.%s.%s.%s", 
+		event.Position.Exchange, event.Position.Market, event.Position.Symbol)
+	
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal position event: %w", err)
+	}
+	
+	return pm.natsClient.Publish(subject, data)
+}
+
+// ClosePosition closes a position
+func (pm *PositionManager) ClosePosition(exchange, symbol string, realizedPnL decimal.Decimal) error {
+	key := fmt.Sprintf("%s:%s", exchange, symbol)
+	
+	val, exists := pm.positions.Load(key)
+	if !exists {
+		return fmt.Errorf("position not found: %s:%s", exchange, symbol)
+	}
+	
+	pos := val.(*Position)
+	pos.Quantity = decimal.Zero
+	pos.RealizedPnL = pos.RealizedPnL.Add(realizedPnL)
+	pos.UnrealizedPnL = decimal.Zero
+	pos.UpdatedAt = time.Now()
+	
+	// Remove from local cache
+	pm.positions.Delete(key)
+	
+	// Publish close event
+	event := PositionUpdateEvent{
+		EventType: "CLOSE",
+		Position:  pos,
+		Timestamp: time.Now(),
+	}
+	
+	if err := pm.publishPositionEvent(event); err != nil {
+		pm.logger.Error("Failed to publish position close event", 
+			zap.Error(err), 
+			zap.String("exchange", exchange),
+			zap.String("symbol", symbol))
+	}
+	
+	return nil
+}
+
+// AddPosition adds a new position or updates existing one
+func (pm *PositionManager) AddPosition(pos *Position) error {
+	key := fmt.Sprintf("%s:%s", pos.Exchange, pos.Symbol)
+	
+	// Check if position already exists
+	if val, exists := pm.positions.Load(key); exists {
+		existingPos := val.(*Position)
+		
+		// Merge positions
+		if existingPos.Side == pos.Side {
+			// Same side - average the entry price
+			totalValue := existingPos.Quantity.Mul(existingPos.EntryPrice).Add(
+				pos.Quantity.Mul(pos.EntryPrice))
+			totalQuantity := existingPos.Quantity.Add(pos.Quantity)
+			
+			pos.Quantity = totalQuantity
+			if !totalQuantity.IsZero() {
+				pos.EntryPrice = totalValue.Div(totalQuantity)
+			}
+			pos.RealizedPnL = existingPos.RealizedPnL
+		} else {
+			// Opposite side - calculate realized P&L
+			closeQuantity := decimal.Min(existingPos.Quantity.Abs(), pos.Quantity.Abs())
+			
+			var realizedPnL decimal.Decimal
+			if existingPos.Side == "LONG" || existingPos.Side == "BUY" {
+				realizedPnL = closeQuantity.Mul(pos.EntryPrice.Sub(existingPos.EntryPrice))
+			} else {
+				realizedPnL = closeQuantity.Mul(existingPos.EntryPrice.Sub(pos.EntryPrice))
+			}
+			
+			pos.RealizedPnL = existingPos.RealizedPnL.Add(realizedPnL)
+			
+			// Update remaining quantity
+			remainingQuantity := existingPos.Quantity.Sub(closeQuantity)
+			if remainingQuantity.IsNegative() {
+				pos.Quantity = remainingQuantity.Neg()
+				pos.Side = pos.Side
+			} else if remainingQuantity.IsPositive() {
+				pos.Quantity = remainingQuantity
+				pos.Side = existingPos.Side
+				pos.EntryPrice = existingPos.EntryPrice
+			} else {
+				pos.Quantity = decimal.Zero
+			}
+		}
+	}
+	
+	return pm.UpdatePosition(pos)
 }
 
 // trimNull removes null bytes from string

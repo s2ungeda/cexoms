@@ -35,29 +35,9 @@ type StrategyPositions struct {
 	mu           sync.RWMutex
 }
 
-// AggregatedPosition represents net position across accounts
-type AggregatedPosition struct {
-	Symbol       string    `json:"symbol"`
-	NetQuantity  float64   `json:"net_quantity"`
-	TotalValue   float64   `json:"total_value"`
-	AvgPrice     float64   `json:"avg_price"`
-	UnrealizedPL float64   `json:"unrealized_pl"`
-	RealizedPL   float64   `json:"realized_pl"`
-	LongQty      float64   `json:"long_qty"`
-	ShortQty     float64   `json:"short_qty"`
-	Accounts     []string  `json:"accounts"` // List of accounts holding this position
-	LastUpdate   time.Time `json:"last_update"`
-}
+// Use AggregatedPosition from manager.go
 
-// PositionUpdate represents a position change event
-type PositionUpdate struct {
-	AccountID  string          `json:"account_id"`
-	Exchange   string          `json:"exchange"`
-	Symbol     string          `json:"symbol"`
-	Position   *types.Position `json:"position"`
-	UpdateType string          `json:"update_type"` // "open", "update", "close"
-	Timestamp  time.Time       `json:"timestamp"`
-}
+// PositionUpdate represents a position change event - moved to avoid conflict
 
 // IntegratedPositionManager manages positions across multiple accounts and strategies
 type IntegratedPositionManager struct {

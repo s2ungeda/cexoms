@@ -97,8 +97,8 @@ type MultiAccountConfig struct {
 	UpdateInterval         time.Duration
 }
 
-// PositionUpdate represents a position update event
-type PositionUpdate struct {
+// PositionUpdateData represents a position update event
+type PositionUpdateData struct {
 	AccountID      string
 	Symbol         string
 	Side           types.PositionSide

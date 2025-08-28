@@ -1,12 +1,18 @@
 package risk
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"math"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/mExOms/pkg/nats"
 	"github.com/mExOms/pkg/types"
 	"github.com/shopspring/decimal"
+	"go.uber.org/zap"
 )
 
 // Manager defines the interface for risk management operations
@@ -44,12 +50,16 @@ type PositionSizeParams struct {
 
 // RiskMetrics contains risk metrics for an account
 type RiskMetrics struct {
-	TotalExposure   decimal.Decimal
-	OpenPositions   int
-	CurrentDrawdown float64
-	DailyPnL        decimal.Decimal
-	VaR95           decimal.Decimal // Value at Risk at 95% confidence
-	UpdatedAt       time.Time
+	AccountID       string          `json:"account_id"`
+	Exchange        string          `json:"exchange"`
+	TotalExposure   decimal.Decimal `json:"total_exposure"`
+	OpenPositions   int             `json:"open_positions"`
+	CurrentDrawdown float64         `json:"current_drawdown"`
+	DailyPnL        decimal.Decimal `json:"daily_pnl"`
+	VaR95           decimal.Decimal `json:"var_95"` // Value at Risk at 95% confidence
+	MarginRatio     float64         `json:"margin_ratio"`
+	Leverage        float64         `json:"leverage"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // RiskEngine is an alias for RiskManager for backward compatibility
@@ -76,18 +86,37 @@ type RiskManager struct {
 	
 	// Historical data for metrics
 	pnlHistory map[string][]decimal.Decimal // account -> daily PnL history
+	
+	// NATS publishing
+	natsClient       *nats.Client
+	logger           *zap.Logger
+	metricsTicker    *time.Ticker
+	stopPublish      chan struct{}
+	lastPublishedMetrics map[string]*RiskMetrics // Cache last published metrics
 }
 
 // NewRiskManager creates a new risk manager instance
-func NewRiskManager() *RiskManager {
-	return &RiskManager{
-		maxDrawdown:      0.10,  // 10% default
-		maxExposure:      decimal.NewFromInt(100000), // $100k default
-		maxPositionCount: 10,    // 10 positions default
-		positions:        make(map[string]map[string]*types.Position),
-		balances:         make(map[string]decimal.Decimal),
-		pnlHistory:       make(map[string][]decimal.Decimal),
+func NewRiskManager(natsClient *nats.Client, logger *zap.Logger) *RiskManager {
+	rm := &RiskManager{
+		maxDrawdown:          0.10,  // 10% default
+		maxExposure:          decimal.NewFromInt(100000), // $100k default
+		maxPositionCount:     10,    // 10 positions default
+		positions:            make(map[string]map[string]*types.Position),
+		balances:             make(map[string]decimal.Decimal),
+		pnlHistory:           make(map[string][]decimal.Decimal),
+		natsClient:           natsClient,
+		logger:               logger,
+		metricsTicker:        time.NewTicker(5 * time.Second),
+		stopPublish:          make(chan struct{}),
+		lastPublishedMetrics: make(map[string]*RiskMetrics),
 	}
+	
+	// Start publishing metrics if NATS client is provided
+	if natsClient != nil {
+		go rm.publishRiskMetrics()
+	}
+	
+	return rm
 }
 
 // CheckOrderRisk validates an order against risk parameters
@@ -223,7 +252,14 @@ func (rm *RiskManager) GetAccountRiskMetrics(account string) *RiskMetrics {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
 	
-	return rm.calculateAccountMetrics(account)
+	metrics := rm.calculateAccountMetrics(account)
+	
+	// Publish metrics if changed significantly
+	if rm.shouldPublishMetrics(account, metrics) {
+		go rm.publishAccountMetrics(account, metrics)
+	}
+	
+	return metrics
 }
 
 // UpdatePosition updates position information for risk tracking
@@ -285,6 +321,7 @@ func (rm *RiskManager) calculateTotalExposure() decimal.Decimal {
 
 func (rm *RiskManager) calculateAccountMetrics(account string) *RiskMetrics {
 	metrics := &RiskMetrics{
+		AccountID:     account,
 		TotalExposure: decimal.Zero,
 		OpenPositions: 0,
 		UpdatedAt:     time.Now(),
@@ -383,4 +420,158 @@ func (rm *RiskManager) GetMetrics() map[string]interface{} {
 		"auto_stop_loss": rm.autoStopLoss,
 		"stop_loss_percent": rm.autoStopLossPercent,
 	}
+}
+
+// publishRiskMetrics publishes risk metrics periodically to NATS
+func (rm *RiskManager) publishRiskMetrics() {
+	for {
+		select {
+		case <-rm.metricsTicker.C:
+			rm.publishAllAccountMetrics()
+		case <-rm.stopPublish:
+			return
+		}
+	}
+}
+
+// publishAllAccountMetrics publishes metrics for all accounts
+func (rm *RiskManager) publishAllAccountMetrics() {
+	rm.mu.RLock()
+	accounts := make([]string, 0, len(rm.balances))
+	for account := range rm.balances {
+		accounts = append(accounts, account)
+	}
+	rm.mu.RUnlock()
+	
+	for _, account := range accounts {
+		metrics := rm.GetAccountRiskMetrics(account)
+		if metrics != nil {
+			rm.publishAccountMetrics(account, metrics)
+		}
+	}
+	
+	// Publish aggregated system risk metrics
+	rm.publishSystemRiskMetrics()
+}
+
+// publishAccountMetrics publishes risk metrics for a specific account
+func (rm *RiskManager) publishAccountMetrics(account string, metrics *RiskMetrics) error {
+	if rm.natsClient == nil {
+		return nil
+	}
+	
+	// Determine exchange from account ID (assuming format: exchange_account)
+	exchange := "unknown"
+	if parts := strings.Split(account, "_"); len(parts) >= 1 {
+		exchange = parts[0]
+	}
+	
+	metrics.AccountID = account
+	metrics.Exchange = exchange
+	
+	data, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal risk metrics: %w", err)
+	}
+	
+	// Subject format: risk.metrics.{exchange}.{account}
+	subject := fmt.Sprintf("risk.metrics.%s.%s", exchange, account)
+	
+	if err := rm.natsClient.Publish(subject, data); err != nil {
+		rm.logger.Error("Failed to publish risk metrics",
+			zap.String("account", account),
+			zap.Error(err))
+		return err
+	}
+	
+	// Cache published metrics
+	rm.mu.Lock()
+	rm.lastPublishedMetrics[account] = metrics
+	rm.mu.Unlock()
+	
+	return nil
+}
+
+// publishSystemRiskMetrics publishes overall system risk metrics
+func (rm *RiskManager) publishSystemRiskMetrics() error {
+	if rm.natsClient == nil {
+		return nil
+	}
+	
+	systemMetrics := map[string]interface{}{
+		"total_exposure":    rm.GetCurrentExposure().String(),
+		"max_exposure":      rm.maxExposure.String(),
+		"exposure_ratio":    rm.GetCurrentExposure().Div(rm.maxExposure).InexactFloat64(),
+		"max_drawdown":      rm.maxDrawdown,
+		"total_accounts":    len(rm.balances),
+		"total_positions":   rm.getTotalPositionCount(),
+		"timestamp":         time.Now(),
+	}
+	
+	data, err := json.Marshal(systemMetrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal system metrics: %w", err)
+	}
+	
+	subject := "risk.metrics.system"
+	if err := rm.natsClient.Publish(subject, data); err != nil {
+		rm.logger.Error("Failed to publish system risk metrics", zap.Error(err))
+		return err
+	}
+	
+	return nil
+}
+
+// shouldPublishMetrics checks if metrics have changed significantly
+func (rm *RiskManager) shouldPublishMetrics(account string, metrics *RiskMetrics) bool {
+	rm.mu.RLock()
+	lastMetrics, exists := rm.lastPublishedMetrics[account]
+	rm.mu.RUnlock()
+	
+	if !exists {
+		return true
+	}
+	
+	// Publish if significant changes detected
+	exposureChange := metrics.TotalExposure.Sub(lastMetrics.TotalExposure).Abs()
+	exposureThreshold := lastMetrics.TotalExposure.Mul(decimal.NewFromFloat(0.05)) // 5% change
+	
+	if exposureChange.GreaterThan(exposureThreshold) {
+		return true
+	}
+	
+	if metrics.OpenPositions != lastMetrics.OpenPositions {
+		return true
+	}
+	
+	if math.Abs(metrics.CurrentDrawdown-lastMetrics.CurrentDrawdown) > 0.01 { // 1% change
+		return true
+	}
+	
+	// Publish at least every 30 seconds
+	if time.Since(lastMetrics.UpdatedAt) > 30*time.Second {
+		return true
+	}
+	
+	return false
+}
+
+// getTotalPositionCount returns total number of positions across all accounts
+func (rm *RiskManager) getTotalPositionCount() int {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	
+	total := 0
+	for _, positions := range rm.positions {
+		total += len(positions)
+	}
+	return total
+}
+
+// Stop stops the risk manager
+func (rm *RiskManager) Stop() {
+	if rm.metricsTicker != nil {
+		rm.metricsTicker.Stop()
+	}
+	close(rm.stopPublish)
 }

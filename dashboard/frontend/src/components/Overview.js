@@ -13,6 +13,8 @@ const Overview = () => {
   const [recentTrades, setRecentTrades] = useState([]);
   const [pnlHistory, setPnlHistory] = useState([]);
   const [positionDistribution, setPositionDistribution] = useState({});
+  const [spotBalance, setSpotBalance] = useState(0);
+  const [futuresBalance, setFuturesBalance] = useState(0);
 
   useEffect(() => {
     // WebSocket listeners
@@ -37,16 +39,39 @@ const Overview = () => {
       }
     };
 
+    const handleBalanceUpdate = (data) => {
+      const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+      if (parsedData.account_type === 'spot' && parsedData.total_usd_value) {
+        setSpotBalance(parsedData.total_usd_value);
+      }
+    };
+
+    const handleFuturesBalanceUpdate = (data) => {
+      const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+      if (parsedData.account_type === 'futures' && parsedData.account_balance) {
+        setFuturesBalance(parsedData.account_balance);
+      }
+    };
+
     WebSocketService.onOrderUpdate(handleOrderUpdate);
     WebSocketService.onPositionUpdate(handlePositionUpdate);
+    WebSocketService.on('balance_update', handleBalanceUpdate);
+    WebSocketService.on('futures_position_update', handleFuturesBalanceUpdate);
 
     // Initial data will come from real OMS via WebSocket
 
     return () => {
       WebSocketService.off('order_update', handleOrderUpdate);
       WebSocketService.off('position_update', handlePositionUpdate);
+      WebSocketService.off('balance_update', handleBalanceUpdate);
+      WebSocketService.off('futures_position_update', handleFuturesBalanceUpdate);
     };
   }, []);
+
+  useEffect(() => {
+    // Update portfolio value whenever balances change
+    setPortfolioValue(spotBalance + futuresBalance);
+  }, [spotBalance, futuresBalance]);
 
 
   const addRecentTrade = (trade) => {
@@ -82,7 +107,6 @@ const Overview = () => {
   const calculateTotalPnL = (positions) => {
     const totalPnL = positions.reduce((sum, pos) => sum + (pos.unrealizedPnL || 0), 0);
     setDailyPnL(totalPnL);
-    setPortfolioValue(100000 + totalPnL);
   };
 
   // Chart configurations
@@ -197,11 +221,19 @@ const Overview = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Portfolio Value"
+              title="Total Portfolio Value"
               value={portfolioValue}
               precision={2}
               prefix={<DollarOutlined />}
+              valueStyle={{
+                color: portfolioValue > 0 ? '#3f8600' : '#000',
+                fontSize: '24px',
+              }}
             />
+            <div style={{ marginTop: '12px', fontSize: '12px', color: '#666' }}>
+              <div>Spot: ${spotBalance.toFixed(2)}</div>
+              <div>Futures: ${futuresBalance.toFixed(2)}</div>
+            </div>
           </Card>
         </Col>
         <Col span={6}>

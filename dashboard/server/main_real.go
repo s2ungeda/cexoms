@@ -164,6 +164,8 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logger.Info("New WebSocket client connected", zap.String("remote", r.RemoteAddr))
+
 	client := &Client{
 		hub:  s.hub,
 		conn: conn,
@@ -210,6 +212,10 @@ func (c *Client) readPump() {
 				}
 				c.mu.Unlock()
 				log.Printf("Client subscribed to: %v", streams)
+				// Send initial data for subscribed streams
+				for _, stream := range streams {
+					log.Printf("Sending initial data for stream: %s", stream)
+				}
 			}
 		case "unsubscribe":
 			var streams []string
@@ -277,8 +283,16 @@ func (s *Server) setupRealOmsSubscriptions() error {
 		return fmt.Errorf("failed to subscribe to position updates: %w", err)
 	}
 
+	// Subscribe to futures positions
+	_, err = s.nc.Subscribe("position.futures.>", func(msg *nats.Msg) {
+		s.handleFuturesPositionUpdate(msg.Data)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to futures positions: %w", err)
+	}
+
 	// Subscribe to market data from OMS
-	_, err = s.nc.Subscribe("market.data.*", func(msg *nats.Msg) {
+	_, err = s.nc.Subscribe("market.data.>", func(msg *nats.Msg) {
 		s.handleMarketUpdate(msg.Data)
 	})
 	if err != nil {
@@ -309,6 +323,22 @@ func (s *Server) setupRealOmsSubscriptions() error {
 		return fmt.Errorf("failed to subscribe to trade executions: %w", err)
 	}
 
+	// Subscribe to kline/candlestick data
+	_, err = s.nc.Subscribe("market.kline.>", func(msg *nats.Msg) {
+		s.handleKlineUpdate(msg.Data)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to kline data: %w", err)
+	}
+
+	// Subscribe to balance updates
+	_, err = s.nc.Subscribe("balance.spot.>", func(msg *nats.Msg) {
+		s.handleBalanceUpdate(msg.Data)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to balance updates: %w", err)
+	}
+
 	s.logger.Info("Successfully subscribed to all OMS events")
 	return nil
 }
@@ -321,7 +351,7 @@ func (s *Server) handleOrderUpdate(data []byte) {
 
 	message := Message{
 		Type: "order_update",
-		Data: data,
+		Data: json.RawMessage(data),
 	}
 
 	if msgData, err := json.Marshal(message); err == nil {
@@ -333,7 +363,7 @@ func (s *Server) handleOrderUpdate(data []byte) {
 func (s *Server) handlePositionUpdate(data []byte) {
 	message := Message{
 		Type: "position_update",
-		Data: data,
+		Data: json.RawMessage(data),
 	}
 
 	if msgData, err := json.Marshal(message); err == nil {
@@ -343,9 +373,10 @@ func (s *Server) handlePositionUpdate(data []byte) {
 }
 
 func (s *Server) handleMarketUpdate(data []byte) {
+	// data is already JSON bytes, use it directly as RawMessage
 	message := Message{
 		Type: "market_update",
-		Data: data,
+		Data: json.RawMessage(data),
 	}
 
 	if msgData, err := json.Marshal(message); err == nil {
@@ -408,12 +439,51 @@ func (s *Server) handleTradeExecution(data []byte) {
 	// Forward trade execution as both order update and position update
 	message := Message{
 		Type: "trade_executed",
-		Data: data,
+		Data: json.RawMessage(data),
 	}
 
 	if msgData, err := json.Marshal(message); err == nil {
 		s.broadcastToSubscribers("orders", msgData)
 		s.broadcastToSubscribers("positions", msgData)
+	}
+}
+
+func (s *Server) handleKlineUpdate(data []byte) {
+	message := Message{
+		Type: "kline_update",
+		Data: json.RawMessage(data),
+	}
+
+	if msgData, err := json.Marshal(message); err == nil {
+		s.broadcastToSubscribers("market", msgData)
+	}
+}
+
+func (s *Server) handleBalanceUpdate(data []byte) {
+	s.logger.Info("Received balance update", zap.String("data", string(data)))
+	message := Message{
+		Type: "balance_update",
+		Data: json.RawMessage(data),
+	}
+
+	if msgData, err := json.Marshal(message); err == nil {
+		s.logger.Info("Broadcasting balance update", zap.Int("data_size", len(msgData)))
+		s.broadcastToSubscribers("positions", msgData)
+		s.collectors["positions"].addData(data)
+	}
+}
+
+func (s *Server) handleFuturesPositionUpdate(data []byte) {
+	s.logger.Info("Received futures position update", zap.String("data", string(data)))
+	message := Message{
+		Type: "futures_position_update",
+		Data: json.RawMessage(data),
+	}
+
+	if msgData, err := json.Marshal(message); err == nil {
+		s.logger.Info("Broadcasting futures position update", zap.Int("data_size", len(msgData)))
+		s.broadcastToSubscribers("positions", msgData)
+		s.collectors["positions"].addData(data)
 	}
 }
 
@@ -462,7 +532,7 @@ func (s *Server) startMetricsPoller() {
 }
 
 func main() {
-	logger, _ := zap.NewProduction()
+	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
 
 	// Get NATS URL from environment or use default

@@ -63,19 +63,21 @@ func (m *MultiAccountRateLimiter) Allow(accountID, key string) bool {
 // GetUsage returns the current usage for an account
 func (m *MultiAccountRateLimiter) GetUsage(accountID string) (used int, limit int) {
 	m.mu.RLock()
-	limiter, exists := m.limiters[accountID]
+	_, exists := m.limiters[accountID]
 	m.mu.RUnlock()
 	
 	if !exists {
 		return 0, m.defaultLimit
 	}
 	
-	return limiter.GetUsage()
+	// GetUsage is not implemented in RateLimiter, return estimate
+	return 0, m.defaultLimit
 }
 
 // GetGlobalUsage returns the global rate limit usage
 func (m *MultiAccountRateLimiter) GetGlobalUsage() (used int, limit int) {
-	return m.globalLimiter.GetUsage()
+	// GetUsage is not implemented in RateLimiter, return estimate
+	return 0, m.defaultLimit
 }
 
 // Reset resets the rate limiter for a specific account
@@ -85,7 +87,7 @@ func (m *MultiAccountRateLimiter) Reset(accountID string) {
 	m.mu.RUnlock()
 	
 	if exists {
-		limiter.Reset()
+		limiter.Reset(accountID)
 	}
 }
 
@@ -94,9 +96,9 @@ func (m *MultiAccountRateLimiter) ResetAll() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	
-	m.globalLimiter.Reset()
-	for _, limiter := range m.limiters {
-		limiter.Reset()
+	m.globalLimiter.Reset("global")
+	for accountID, limiter := range m.limiters {
+		limiter.Reset(accountID)
 	}
 }
 

@@ -3,6 +3,7 @@ import { Card, Row, Col, Table, Statistic, Tag, Space, Select, Tabs } from 'antd
 import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { Line } from 'react-chartjs-2';
 import WebSocketService from '../services/WebSocketService';
+import SimpleCandlestickChart from './SimpleCandlestickChart';
 import moment from 'moment';
 
 const { Option } = Select;
@@ -11,37 +12,38 @@ const { TabPane } = Tabs;
 const MarketData = () => {
   const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT');
   const [marketTickers, setMarketTickers] = useState({});
-  const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
   const [priceHistory, setPriceHistory] = useState({});
-  const [trades, setTrades] = useState([]);
   const chartRef = useRef(null);
 
   useEffect(() => {
     const handleMarketUpdate = (data) => {
-      if (data.symbol) {
+      // Parse data if it's a string
+      const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+      
+      if (parsedData.symbol) {
+        // Ensure numeric values
+        const tickerData = {
+          ...parsedData,
+          price: typeof parsedData.price === 'number' ? parsedData.price : parseFloat(parsedData.price),
+          volume: typeof parsedData.volume === 'number' ? parsedData.volume : parseFloat(parsedData.volume),
+          high: typeof parsedData.high === 'number' ? parsedData.high : parseFloat(parsedData.high),
+          low: typeof parsedData.low === 'number' ? parsedData.low : parseFloat(parsedData.low),
+          change: typeof parsedData.change === 'number' ? parsedData.change : parseFloat(parsedData.change),
+          change_pct: typeof parsedData.change_pct === 'number' ? parsedData.change_pct : parseFloat(parsedData.change_pct),
+          lastUpdate: Date.now(),
+        };
+        
         // Update ticker
         setMarketTickers(prev => ({
           ...prev,
-          [data.symbol]: {
-            ...prev[data.symbol],
-            ...data,
-            lastUpdate: Date.now(),
-          }
+          [parsedData.symbol]: tickerData
         }));
 
         // Update price history
-        updatePriceHistory(data.symbol, data.price);
+        updatePriceHistory(parsedData.symbol, tickerData.price);
       }
 
-      // Update order book if available
-      if (data.orderBook) {
-        setOrderBook(data.orderBook);
-      }
-
-      // Update recent trades
-      if (data.trade) {
-        addTrade(data.trade);
-      }
+      // Removed orderBook and trades handling to reduce system load
     };
 
     WebSocketService.onMarketUpdate(handleMarketUpdate);
@@ -78,12 +80,6 @@ const MarketData = () => {
     });
   };
 
-  const addTrade = (trade) => {
-    setTrades(prev => {
-      const newTrades = [trade, ...prev];
-      return newTrades.slice(0, 50); // Keep last 50 trades
-    });
-  };
 
   const getPriceChartData = () => {
     const history = priceHistory[selectedSymbol] || [];
@@ -139,56 +135,21 @@ const MarketData = () => {
     },
     {
       title: '24h Change',
-      dataIndex: 'change24h',
-      key: 'change24h',
+      dataIndex: 'change_pct',
+      key: 'change_pct',
       width: 100,
       render: (change) => (
-        <Tag color={change >= 0 ? 'green' : 'red'}>
-          {change?.toFixed(2)}%
+        <Tag color={(change || 0) >= 0 ? 'green' : 'red'}>
+          {(change || 0).toFixed(2)}%
         </Tag>
       ),
     },
     {
       title: '24h Volume',
-      dataIndex: 'volume24h',
-      key: 'volume24h',
+      dataIndex: 'volume',
+      key: 'volume',
       width: 120,
-      render: (vol) => `$${(vol / 1000).toFixed(1)}K`,
-    },
-  ];
-
-  const tradesColumns = [
-    {
-      title: 'Time',
-      dataIndex: 'time',
-      key: 'time',
-      width: 80,
-      render: (time) => moment(time).format('HH:mm:ss'),
-    },
-    {
-      title: 'Price',
-      dataIndex: 'price',
-      key: 'price',
-      width: 80,
-      render: (price) => `$${price.toFixed(2)}`,
-    },
-    {
-      title: 'Quantity',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      width: 80,
-      render: (qty) => qty.toFixed(4),
-    },
-    {
-      title: 'Side',
-      dataIndex: 'side',
-      key: 'side',
-      width: 60,
-      render: (side) => (
-        <Tag color={side === 'BUY' ? 'green' : 'red'} style={{ margin: 0 }}>
-          {side}
-        </Tag>
-      ),
+      render: (vol) => `$${((vol || 0) / 1000000).toFixed(1)}M`,
     },
   ];
 
@@ -225,17 +186,17 @@ const MarketData = () => {
               <Col span={4}>
                 <Statistic
                   title="24h Change"
-                  value={currentTicker.change24h}
+                  value={currentTicker.change_pct || 0}
                   suffix="%"
                   precision={2}
-                  valueStyle={{ color: currentTicker.change24h >= 0 ? '#3f8600' : '#cf1322' }}
-                  prefix={currentTicker.change24h >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                  valueStyle={{ color: (currentTicker.change_pct || 0) >= 0 ? '#3f8600' : '#cf1322' }}
+                  prefix={(currentTicker.change_pct || 0) >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
                 />
               </Col>
               <Col span={4}>
                 <Statistic
                   title="24h High"
-                  value={currentTicker.high24h}
+                  value={currentTicker.high || 0}
                   prefix="$"
                   precision={2}
                 />
@@ -243,7 +204,7 @@ const MarketData = () => {
               <Col span={4}>
                 <Statistic
                   title="24h Low"
-                  value={currentTicker.low24h}
+                  value={currentTicker.low || 0}
                   prefix="$"
                   precision={2}
                 />
@@ -251,7 +212,7 @@ const MarketData = () => {
               <Col span={4}>
                 <Statistic
                   title="24h Volume"
-                  value={currentTicker.volume24h / 1000000}
+                  value={(currentTicker.volume || 0) / 1000000}
                   suffix="M"
                   prefix="$"
                   precision={2}
@@ -260,9 +221,9 @@ const MarketData = () => {
               <Col span={4}>
                 <Statistic
                   title="Spread"
-                  value={currentTicker.ask - currentTicker.bid}
+                  value={(currentTicker.ask || currentTicker.price || 0) - (currentTicker.bid || currentTicker.price || 0)}
                   prefix="$"
-                  precision={2}
+                  precision={4}
                 />
               </Col>
             </Row>
@@ -271,14 +232,13 @@ const MarketData = () => {
       </Row>
 
       <Row gutter={16} style={{ marginTop: 16 }}>
-        <Col span={16}>
-          <Card title="Price Chart">
-            <div style={{ height: 400 }}>
-              <Line ref={chartRef} data={getPriceChartData()} options={chartOptions} />
-            </div>
-          </Card>
+        <Col span={24}>
+          <SimpleCandlestickChart symbol={selectedSymbol} />
         </Col>
-        <Col span={8}>
+      </Row>
+
+      <Row gutter={16} style={{ marginTop: 16 }}>
+        <Col span={24}>
           <Card title="Market Tickers" bodyStyle={{ padding: 0 }}>
             <Table
               dataSource={Object.values(marketTickers)}
@@ -289,59 +249,6 @@ const MarketData = () => {
               rowClassName={(record) => 
                 record.lastUpdate && Date.now() - record.lastUpdate < 1000 ? 'realtime-update' : ''
               }
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={16} style={{ marginTop: 16 }}>
-        <Col span={12}>
-          <Card title="Order Book">
-            <Tabs defaultActiveKey="1">
-              <TabPane tab="Order Book" key="1">
-                <div className="orderbook-container">
-                  <div className="bids">
-                    <div className="orderbook-row orderbook-header">
-                      <span>Price</span>
-                      <span>Quantity</span>
-                      <span>Total</span>
-                    </div>
-                    {orderBook.bids.slice(0, 10).map((bid, index) => (
-                      <div key={index} className="orderbook-row">
-                        <span style={{ color: '#52c41a' }}>${bid.price.toFixed(2)}</span>
-                        <span>{bid.quantity.toFixed(4)}</span>
-                        <span>{bid.total.toFixed(4)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="asks">
-                    <div className="orderbook-row orderbook-header">
-                      <span>Price</span>
-                      <span>Quantity</span>
-                      <span>Total</span>
-                    </div>
-                    {orderBook.asks.slice(0, 10).map((ask, index) => (
-                      <div key={index} className="orderbook-row">
-                        <span style={{ color: '#f5222d' }}>${ask.price.toFixed(2)}</span>
-                        <span>{ask.quantity.toFixed(4)}</span>
-                        <span>{ask.total.toFixed(4)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </TabPane>
-            </Tabs>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card title="Recent Trades" bodyStyle={{ padding: 0 }}>
-            <Table
-              dataSource={trades}
-              columns={tradesColumns}
-              rowKey="id"
-              pagination={false}
-              size="small"
-              scroll={{ y: 400 }}
             />
           </Card>
         </Col>
