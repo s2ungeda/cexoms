@@ -1,0 +1,38 @@
+[Unit]
+Description=mExOms TCP Server
+After=network.target nats.service
+
+[Service]
+Type=simple
+User=oms
+Group=oms
+WorkingDirectory=/opt/mexoms
+
+# 환경 변수
+Environment="TCP_PORT=9090"
+Environment="TCP_MAX_CLIENTS=100"
+
+# 실행 파일
+ExecStart=/opt/mexoms/bin/tcp-server 9090
+
+# 재시작 정책
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+StartLimitInterval=300
+
+# 리소스 제한
+LimitNOFILE=65536
+LimitCORE=infinity
+
+# 보안
+PrivateTmp=true
+NoNewPrivileges=true
+
+# 로깅
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tcp-server
+
+[Install]
+WantedBy=multi-user.target

@@ -719,5 +719,41 @@ crypto-oms/
 - ✅ C++ 차익거래 감지 (초고속)
 ```
 
+## Phase 23: TCP Multi-Client Server (추가 개발 - C++)
+```markdown
+### 목표
+20명 이상의 클라이언트가 TCP 소켓으로 접속하여 실시간 데이터 조회, 시세 수신, 주문 처리
+
+### 주요 기능
+1. **TCP 서버 (포트: 9090)**
+   - 동시 접속: 20-100 클라이언트
+   - Binary Protocol (Protocol Buffers)
+   - Epoll/IOCP 기반 비동기 I/O
+   - Lock-free queue로 메시지 처리
+   - Heartbeat/Keep-alive
+
+2. **클라이언트 기능**
+   - 인증: API Key 기반
+   - 데이터 조회: 잔고, 포지션, 주문내역
+   - 실시간 스트리밍: 시세, 호가, 체결
+   - 주문 처리: 생성/수정/취소
+
+3. **구현 파일**
+   core/tcp_server/
+     tcp_server.h                  # TCP 서버 헤더
+     tcp_server.cpp                # 서버 구현
+     client_session.h              # 클라이언트 세션
+     client_session.cpp            # 세션 구현
+     message_handler.h             # 메시지 처리
+     broadcaster.h                 # 브로드캐스터
+   proto/tcp/v1/messages.proto     # 프로토콜 정의
+
+4. **성능 목표**
+   - 레이턴시: < 100μs (마이크로초)
+   - 처리량: 50,000 msg/sec/client
+   - 메모리: < 5MB/client
+   - Zero-copy 메시지 전송
+```
+
 ---
 

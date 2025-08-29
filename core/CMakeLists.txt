@@ -55,6 +55,9 @@ target_link_libraries(oms_core_lib
     atomic
 )
 
+# Add TCP server subdirectory
+add_subdirectory(tcp_server)
+
 # Link NUMA library if found
 if(NUMA_LIBRARY)
     target_link_libraries(oms_core_lib ${NUMA_LIBRARY})

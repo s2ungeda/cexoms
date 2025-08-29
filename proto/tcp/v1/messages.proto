@@ -1,0 +1,276 @@
+syntax = "proto3";
+
+package tcp.v1;
+
+option go_package = "github.com/your-org/mExOms/pkg/proto/tcp/v1;tcpv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Message wrapper for all TCP communications
+message Message {
+    string id = 1;  // Unique message ID
+    MessageType type = 2;
+    google.protobuf.Timestamp timestamp = 3;
+    
+    oneof payload {
+        // Authentication
+        LoginRequest login_request = 10;
+        LoginResponse login_response = 11;
+        LogoutRequest logout_request = 12;
+        LogoutResponse logout_response = 13;
+        
+        // Market Data
+        SubscribeRequest subscribe_request = 20;
+        SubscribeResponse subscribe_response = 21;
+        UnsubscribeRequest unsubscribe_request = 22;
+        UnsubscribeResponse unsubscribe_response = 23;
+        MarketDataUpdate market_data = 24;
+        OrderBookUpdate orderbook = 25;
+        TradeUpdate trade = 26;
+        
+        // Account Data
+        BalanceRequest balance_request = 30;
+        BalanceResponse balance_response = 31;
+        PositionRequest position_request = 32;
+        PositionResponse position_response = 33;
+        
+        // Orders
+        OrderRequest order_request = 40;
+        OrderResponse order_response = 41;
+        CancelOrderRequest cancel_request = 42;
+        CancelOrderResponse cancel_response = 43;
+        OrderStatusUpdate order_update = 44;
+        
+        // System
+        HeartbeatRequest heartbeat_request = 50;
+        HeartbeatResponse heartbeat_response = 51;
+        ErrorMessage error = 52;
+    }
+}
+
+enum MessageType {
+    UNKNOWN = 0;
+    
+    // Authentication
+    LOGIN_REQUEST = 1;
+    LOGIN_RESPONSE = 2;
+    LOGOUT_REQUEST = 3;
+    LOGOUT_RESPONSE = 4;
+    
+    // Market Data
+    SUBSCRIBE_REQUEST = 10;
+    SUBSCRIBE_RESPONSE = 11;
+    UNSUBSCRIBE_REQUEST = 12;
+    UNSUBSCRIBE_RESPONSE = 13;
+    MARKET_DATA_UPDATE = 14;
+    ORDERBOOK_UPDATE = 15;
+    TRADE_UPDATE = 16;
+    
+    // Account Data
+    BALANCE_REQUEST = 20;
+    BALANCE_RESPONSE = 21;
+    POSITION_REQUEST = 22;
+    POSITION_RESPONSE = 23;
+    
+    // Orders
+    ORDER_REQUEST = 30;
+    ORDER_RESPONSE = 31;
+    CANCEL_ORDER_REQUEST = 32;
+    CANCEL_ORDER_RESPONSE = 33;
+    ORDER_STATUS_UPDATE = 34;
+    
+    // System
+    HEARTBEAT_REQUEST = 40;
+    HEARTBEAT_RESPONSE = 41;
+    ERROR = 42;
+}
+
+// Authentication Messages
+message LoginRequest {
+    string api_key = 1;
+    string secret = 2;
+    string client_id = 3;  // Optional client identifier
+}
+
+message LoginResponse {
+    bool success = 1;
+    string session_token = 2;
+    string message = 3;
+    repeated string permissions = 4;  // ["read", "trade", "transfer"]
+}
+
+message LogoutRequest {
+    string reason = 1;
+}
+
+message LogoutResponse {
+    bool success = 1;
+}
+
+// Market Data Messages
+message SubscribeRequest {
+    repeated string symbols = 1;      // ["BTC/USDT", "ETH/USDT"]
+    repeated string channels = 2;     // ["ticker", "orderbook", "trades"]
+    string exchange = 3;              // "binance", "all"
+}
+
+message SubscribeResponse {
+    map<string, bool> results = 1;   // symbol -> success
+    string message = 2;
+}
+
+message UnsubscribeRequest {
+    repeated string symbols = 1;
+    repeated string channels = 2;
+}
+
+message UnsubscribeResponse {
+    bool success = 1;
+}
+
+message MarketDataUpdate {
+    string symbol = 1;
+    string exchange = 2;
+    double price = 3;
+    double volume_24h = 4;
+    double high_24h = 5;
+    double low_24h = 6;
+    double change_24h = 7;
+    double bid = 8;
+    double ask = 9;
+    int64 timestamp_ms = 10;
+}
+
+message OrderBookUpdate {
+    string symbol = 1;
+    string exchange = 2;
+    repeated PriceLevel bids = 3;
+    repeated PriceLevel asks = 4;
+    int64 sequence = 5;
+    int64 timestamp_ms = 6;
+}
+
+message PriceLevel {
+    double price = 1;
+    double quantity = 2;
+}
+
+message TradeUpdate {
+    string symbol = 1;
+    string exchange = 2;
+    string trade_id = 3;
+    double price = 4;
+    double quantity = 5;
+    bool is_buyer_maker = 6;
+    int64 timestamp_ms = 7;
+}
+
+// Account Messages
+message BalanceRequest {
+    string exchange = 1;
+    string account_id = 2;  // Optional for multi-account
+}
+
+message BalanceResponse {
+    repeated AssetBalance balances = 1;
+    double total_value_usdt = 2;
+}
+
+message AssetBalance {
+    string asset = 1;
+    double free = 2;
+    double locked = 3;
+    double total = 4;
+}
+
+message PositionRequest {
+    string exchange = 1;
+    string symbol = 2;      // Optional, empty for all positions
+}
+
+message PositionResponse {
+    repeated Position positions = 1;
+}
+
+message Position {
+    string symbol = 1;
+    string exchange = 2;
+    string side = 3;        // "LONG", "SHORT"
+    double quantity = 4;
+    double entry_price = 5;
+    double mark_price = 6;
+    double unrealized_pnl = 7;
+    double margin = 8;
+}
+
+// Order Messages
+message OrderRequest {
+    string client_order_id = 1;
+    string symbol = 2;
+    string exchange = 3;
+    string side = 4;         // "BUY", "SELL"
+    string type = 5;         // "MARKET", "LIMIT", "STOP"
+    double quantity = 6;
+    double price = 7;        // For LIMIT orders
+    double stop_price = 8;   // For STOP orders
+    string time_in_force = 9; // "GTC", "IOC", "FOK"
+}
+
+message OrderResponse {
+    bool success = 1;
+    string order_id = 2;
+    string client_order_id = 3;
+    string message = 4;
+    Order order = 5;
+}
+
+message CancelOrderRequest {
+    string order_id = 1;
+    string client_order_id = 2;
+    string symbol = 3;
+    string exchange = 4;
+}
+
+message CancelOrderResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message Order {
+    string order_id = 1;
+    string client_order_id = 2;
+    string symbol = 3;
+    string exchange = 4;
+    string status = 5;       // "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED"
+    string side = 6;
+    string type = 7;
+    double quantity = 8;
+    double executed_quantity = 9;
+    double price = 10;
+    double average_price = 11;
+    int64 created_at = 12;
+    int64 updated_at = 13;
+}
+
+message OrderStatusUpdate {
+    Order order = 1;
+    string update_type = 2;  // "NEW", "TRADE", "CANCELED", "EXPIRED"
+    double last_filled_quantity = 3;
+    double last_filled_price = 4;
+}
+
+// System Messages
+message HeartbeatRequest {
+    int64 sequence = 1;
+}
+
+message HeartbeatResponse {
+    int64 sequence = 1;
+    int64 server_time = 2;
+}
+
+message ErrorMessage {
+    int32 code = 1;
+    string message = 2;
+    string details = 3;
+}
