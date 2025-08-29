@@ -70,6 +70,30 @@ target/
 tmp/
 temp/
 *.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+
+# Test executables
+test-*
+!test-*.go
+!test-*.sh
+!test-*.py
+
+# Runtime files
+*.pid
+nohup.out
+
+# Cache
+.cache/
+__pycache__/
+*.pyc
+
+# Frontend build cache
+dashboard/frontend/.cache/
+dashboard/frontend/node_modules/.cache/
 
 # Secrets
 secrets/
