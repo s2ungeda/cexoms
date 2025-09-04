@@ -373,15 +373,63 @@ func (s *Server) handlePositionUpdate(data []byte) {
 }
 
 func (s *Server) handleMarketUpdate(data []byte) {
-	// data is already JSON bytes, use it directly as RawMessage
-	message := Message{
-		Type: "market_update",
-		Data: json.RawMessage(data),
+	// Parse the incoming market data
+	var marketData struct {
+		Symbol    string  `json:"symbol"`
+		Ticker    *struct {
+			Symbol             string  `json:"symbol"`
+			Price              float64 `json:"price"`
+			PriceChange        float64 `json:"priceChange"`
+			PriceChangePercent float64 `json:"priceChangePercent"`
+			High               float64 `json:"high"`
+			Low                float64 `json:"low"`
+			Volume             float64 `json:"volume"`
+			QuoteVolume        float64 `json:"quoteVolume"`
+		} `json:"ticker,omitempty"`
+		Trade *struct {
+			Price float64 `json:"price"`
+			Side  string  `json:"side"`
+		} `json:"trade,omitempty"`
 	}
+	
+	if err := json.Unmarshal(data, &marketData); err != nil {
+		log.Printf("Failed to parse market data: %v", err)
+		return
+	}
+	
+	// Transform to frontend format
+	var transformed map[string]interface{}
+	
+	if marketData.Ticker != nil {
+		// Transform ticker data to frontend format
+		transformed = map[string]interface{}{
+			"symbol":     marketData.Symbol,
+			"price":      marketData.Ticker.Price,
+			"high":       marketData.Ticker.High,
+			"low":        marketData.Ticker.Low,
+			"volume":     marketData.Ticker.Volume,
+			"change":     marketData.Ticker.PriceChange,
+			"change_pct": marketData.Ticker.PriceChangePercent,
+		}
+	} else if marketData.Trade != nil {
+		// For trades, update only the price
+		transformed = map[string]interface{}{
+			"symbol": marketData.Symbol,
+			"price":  marketData.Trade.Price,
+		}
+	}
+	
+	if transformed != nil {
+		transformedData, _ := json.Marshal(transformed)
+		message := Message{
+			Type: "market_update",
+			Data: json.RawMessage(transformedData),
+		}
 
-	if msgData, err := json.Marshal(message); err == nil {
-		s.broadcastToSubscribers("market", msgData)
-		s.collectors["market"].addData(data)
+		if msgData, err := json.Marshal(message); err == nil {
+			s.broadcastToSubscribers("market", msgData)
+			s.collectors["market"].addData(transformedData)
+		}
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
+	
+	vault "github.com/mExOms/pkg/vault"
 )
 
 type BalanceData struct {
@@ -33,27 +35,27 @@ func main() {
 	
 	// If not in environment, try to get from Vault
 	if apiKey == "" || apiSecret == "" {
-		// For now, use hardcoded test credentials or load from config
-		// In production, this would connect to Vault
-		logger.Info("API keys not found in environment, please set BINANCE_API_KEY and BINANCE_SECRET_KEY")
+		logger.Info("API keys not found in environment, checking Vault...")
 		
-		// Check if we can read from a config file
-		configPath := "/home/seunge/project/mExOms/configs/binance-keys.json"
-		if data, err := os.ReadFile(configPath); err == nil {
-			var keys struct {
-				APIKey    string `json:"api_key"`
-				SecretKey string `json:"secret_key"`
-			}
-			if err := json.Unmarshal(data, &keys); err == nil {
-				apiKey = keys.APIKey
-				apiSecret = keys.SecretKey
-				logger.Info("Loaded API keys from config file")
-			}
+		// Import vault package
+		vaultClient, err := vault.NewClient(vault.Config{})
+		if err != nil {
+			logger.Error("Failed to connect to Vault", zap.Error(err))
+			logger.Info("Please ensure Vault is running or set BINANCE_API_KEY and BINANCE_SECRET_KEY environment variables")
+			logger.Fatal("Cannot proceed without API keys")
 		}
 		
-		if apiKey == "" || apiSecret == "" {
-			logger.Fatal("BINANCE_API_KEY and BINANCE_SECRET_KEY must be set")
+		// Get keys from Vault
+		keys, err := vaultClient.GetExchangeKeys("binance", "spot")
+		if err != nil {
+			logger.Error("Failed to get keys from Vault", zap.Error(err))
+			logger.Info("Please run: ./scripts/store-binance-keys.sh to store your API keys")
+			logger.Fatal("Cannot proceed without API keys")
 		}
+		
+		apiKey = keys["api_key"]
+		apiSecret = keys["secret_key"]
+		logger.Info("Successfully retrieved API keys from Vault")
 	}
 
 	// Connect to NATS

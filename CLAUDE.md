@@ -8,6 +8,21 @@ Multi-Exchange Cryptocurrency Order Management System (OMS) - A high-performance
 
 ## Common Development Commands
 
+### Quick Start Commands
+```bash
+# Start entire OMS system with one command
+make start-all
+
+# Stop all services
+make stop-all
+
+# Start only infrastructure
+make infra-up
+
+# Stop infrastructure
+make infra-down
+```
+
 ### Build Commands
 ```bash
 # Install dependencies
@@ -47,13 +62,33 @@ go test -v -race ./...
 docker-compose up -d
 
 # Start individual services
-make run-nats      # Message broker
-make run-redis     # Cache
-make run-postgres  # Database
-make run-vault     # Secret management
+make run-nats      # Message broker (with JetStream)
+make run-redis     # Cache (in-memory)
+make run-vault     # Secret management (persistent storage)
 
 # Stop all services
 docker-compose down
+
+# Initialize Vault (first time only)
+./scripts/init-vault.sh
+
+# Store API keys in Vault
+./scripts/store-binance-keys.sh
+```
+
+### Service Commands
+```bash
+# Start market data service (no API key required)
+go run cmd/binance-market-full/main.go
+
+# Start balance service (requires API keys)
+go run cmd/binance-spot-balance/main.go
+
+# Start dashboard server
+cd dashboard && ./oms-dashboard-real
+
+# Start frontend (development mode with hot-reload)
+cd dashboard/frontend && npm start
 ```
 
 ### Development Commands
@@ -66,6 +101,14 @@ make lint
 
 # Clean build artifacts
 make clean
+
+# Check system status
+ps aux | grep -E "binance|dashboard" | grep -v grep
+
+# View logs
+tail -f logs/market.log
+tail -f logs/balance.log
+tail -f logs/dashboard.log
 ```
 
 ## Architecture Overview
@@ -203,6 +246,30 @@ When working on this project, create daily work logs following these rules:
 3. **Important Rules**:
 - Always reference previous work logs for continuity
 - Track incomplete tasks for next session
-- Accurately record Phase progress (total 22 phases)
+- Accurately record Phase progress (total 23 phases - all completed)
 - Include all created/modified files
 - Note any architectural decisions or issues
+
+## Recent Updates (2025-09-04)
+
+### System Startup Automation
+- Added `make start-all` and `make stop-all` commands
+- Created `scripts/start-oms.sh` and `scripts/stop-oms.sh`
+- Automatic service health checking and log management
+
+### Vault Persistent Storage
+- Vault now uses file-based persistent storage at `~/.mExOms/vault-data/`
+- Automatic initialization and unseal on startup
+- API keys persist across system restarts
+
+### Market Data Changes
+- Changed from orderbook (depth20) to 24hr ticker stream
+- Added ticker data transformation in dashboard server
+- Fixed data format compatibility between backend and frontend
+
+### Key Files Modified
+- `cmd/binance-market-full/main.go` - Ticker stream implementation
+- `dashboard/server/main_real.go` - Data transformation logic
+- `Makefile` - New commands and persistent Vault
+- `docker-compose.yml` - Added Redis service
+- Various scripts in `scripts/` directory

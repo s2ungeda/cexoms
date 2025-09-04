@@ -13,7 +13,13 @@ NC='\033[0m'
 
 # Vault configuration
 export VAULT_ADDR='http://localhost:8200'
-export VAULT_TOKEN='root-token'
+
+# Get token from saved file or use default
+if [ -f "$HOME/.mExOms/vault-token" ]; then
+    export VAULT_TOKEN=$(cat "$HOME/.mExOms/vault-token")
+else
+    export VAULT_TOKEN='root-token'
+fi
 
 echo -e "${YELLOW}=== Binance API Key Storage ===${NC}"
 echo -e "${RED}WARNING: Make sure to use API keys with appropriate permissions!${NC}"

@@ -27,23 +27,27 @@ type Trade struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// OrderBookLevel represents a price level
-type OrderBookLevel struct {
-	Price    float64 `json:"price"`
-	Quantity float64 `json:"quantity"`
-}
 
-// MarketDataUpdate combines orderbook and trades
+// MarketDataUpdate combines ticker and trades
 type MarketDataUpdate struct {
 	Symbol    string           `json:"symbol"`
-	OrderBook *OrderBook       `json:"orderBook,omitempty"`
+	Ticker    *TickerData      `json:"ticker,omitempty"`
 	Trade     *Trade           `json:"trade,omitempty"`
 	Timestamp time.Time        `json:"timestamp"`
 }
 
-type OrderBook struct {
-	Bids []OrderBookLevel `json:"bids"`
-	Asks []OrderBookLevel `json:"asks"`
+type TickerData struct {
+	Symbol             string    `json:"symbol"`
+	Price              float64   `json:"price"`
+	PriceChange        float64   `json:"priceChange"`
+	PriceChangePercent float64   `json:"priceChangePercent"`
+	High               float64   `json:"high"`
+	Low                float64   `json:"low"`
+	Volume             float64   `json:"volume"`
+	QuoteVolume        float64   `json:"quoteVolume"`
+	OpenTime           time.Time `json:"openTime"`
+	CloseTime          time.Time `json:"closeTime"`
+	Count              int       `json:"count"`
 }
 
 func main() {
@@ -79,8 +83,8 @@ func main() {
 }
 
 func startCombinedStream(ctx context.Context, symbol string, nc *nats.Conn, logger *zap.Logger) {
-	// Combined stream: depth + trade
-	wsURL := fmt.Sprintf("wss://stream.binance.com:9443/ws/%s@depth20@100ms/%s@trade", symbol, symbol)
+	// Combined stream: ticker + trade
+	wsURL := fmt.Sprintf("wss://stream.binance.com:9443/ws/%s@ticker/%s@trade", symbol, symbol)
 
 	for {
 		select {
@@ -115,64 +119,65 @@ func handleCombinedStream(ctx context.Context, conn *websocket.Conn, symbol stri
 				return
 			}
 
-			// Check event type
-			if eventType, ok := msg["e"].(string); ok {
-				switch eventType {
-				case "depthUpdate":
-					orderBook := parseDepthUpdate(msg)
-					publishMarketData(strings.ToUpper(symbol), &orderBook, nil, nc, logger)
-				case "trade":
-					trade := parseTrade(msg)
-					publishMarketData(strings.ToUpper(symbol), nil, &trade, nc, logger)
+			// Check if it's a combined stream message
+			if _, ok := msg["stream"].(string); ok {
+				// Combined stream format
+				if data, ok := msg["data"].(map[string]interface{}); ok {
+					if eventType, ok := data["e"].(string); ok {
+						switch eventType {
+						case "trade":
+							trade := parseTrade(data)
+							publishMarketData(strings.ToUpper(symbol), nil, &trade, nc, logger)
+						case "24hrTicker":
+							ticker := parseTicker(data)
+							publishMarketData(strings.ToUpper(symbol), &ticker, nil, nc, logger)
+						}
+					}
 				}
-			} else if _, ok := msg["lastUpdateId"]; ok {
-				// Snapshot data
-				orderBook := parseDepthSnapshot(msg)
-				publishMarketData(strings.ToUpper(symbol), &orderBook, nil, nc, logger)
+			} else {
+				// Direct stream format
+				if eventType, ok := msg["e"].(string); ok {
+					switch eventType {
+					case "trade":
+						trade := parseTrade(msg)
+						publishMarketData(strings.ToUpper(symbol), nil, &trade, nc, logger)
+					case "24hrTicker":
+						ticker := parseTicker(msg)
+						publishMarketData(strings.ToUpper(symbol), &ticker, nil, nc, logger)
+					}
+				}
 			}
 		}
 	}
 }
 
-func parseDepthUpdate(msg map[string]interface{}) OrderBook {
-	ob := OrderBook{
-		Bids: make([]OrderBookLevel, 0),
-		Asks: make([]OrderBookLevel, 0),
+func parseTicker(msg map[string]interface{}) TickerData {
+	symbol := strings.ToUpper(msg["s"].(string))
+	price, _ := strconv.ParseFloat(msg["c"].(string), 64)
+	priceChange, _ := strconv.ParseFloat(msg["p"].(string), 64)
+	priceChangePercent, _ := strconv.ParseFloat(msg["P"].(string), 64)
+	high, _ := strconv.ParseFloat(msg["h"].(string), 64)
+	low, _ := strconv.ParseFloat(msg["l"].(string), 64)
+	volume, _ := strconv.ParseFloat(msg["v"].(string), 64)
+	quoteVolume, _ := strconv.ParseFloat(msg["q"].(string), 64)
+	count := int(msg["n"].(float64))
+	
+	openTime := int64(msg["O"].(float64))
+	closeTime := int64(msg["C"].(float64))
+	
+	return TickerData{
+		Symbol:             symbol,
+		Price:              price,
+		PriceChange:        priceChange,
+		PriceChangePercent: priceChangePercent,
+		High:               high,
+		Low:                low,
+		Volume:             volume,
+		QuoteVolume:        quoteVolume,
+		OpenTime:           time.Unix(0, openTime*int64(time.Millisecond)),
+		CloseTime:          time.Unix(0, closeTime*int64(time.Millisecond)),
+		Count:              count,
 	}
-
-	// Parse bids
-	if bidsData, ok := msg["b"].([]interface{}); ok {
-		for i, bid := range bidsData {
-			if i >= 10 { break }
-			if bidArray, ok := bid.([]interface{}); ok && len(bidArray) >= 2 {
-				price, _ := strconv.ParseFloat(bidArray[0].(string), 64)
-				qty, _ := strconv.ParseFloat(bidArray[1].(string), 64)
-				if qty > 0 { // Only add non-zero quantities
-					ob.Bids = append(ob.Bids, OrderBookLevel{Price: price, Quantity: qty})
-				}
-			}
-		}
-	}
-
-	// Parse asks
-	if asksData, ok := msg["a"].([]interface{}); ok {
-		for i, ask := range asksData {
-			if i >= 10 { break }
-			if askArray, ok := ask.([]interface{}); ok && len(askArray) >= 2 {
-				price, _ := strconv.ParseFloat(askArray[0].(string), 64)
-				qty, _ := strconv.ParseFloat(askArray[1].(string), 64)
-				if qty > 0 { // Only add non-zero quantities
-					ob.Asks = append(ob.Asks, OrderBookLevel{Price: price, Quantity: qty})
-				}
-			}
-		}
-	}
-
-	return ob
-}
-
-func parseDepthSnapshot(msg map[string]interface{}) OrderBook {
-	return parseDepthUpdate(msg) // Same format
 }
 
 func parseTrade(msg map[string]interface{}) Trade {
@@ -198,10 +203,10 @@ func parseTrade(msg map[string]interface{}) Trade {
 	}
 }
 
-func publishMarketData(symbol string, orderBook *OrderBook, trade *Trade, nc *nats.Conn, logger *zap.Logger) {
+func publishMarketData(symbol string, ticker *TickerData, trade *Trade, nc *nats.Conn, logger *zap.Logger) {
 	update := MarketDataUpdate{
 		Symbol:    symbol,
-		OrderBook: orderBook,
+		Ticker:    ticker,
 		Trade:     trade,
 		Timestamp: time.Now(),
 	}
@@ -219,11 +224,12 @@ func publishMarketData(symbol string, orderBook *OrderBook, trade *Trade, nc *na
 			zap.String("subject", subject),
 			zap.Error(err))
 	} else {
-		if orderBook != nil {
-			logger.Debug("Published orderbook", 
+		if ticker != nil {
+			logger.Debug("Published ticker", 
 				zap.String("symbol", symbol),
-				zap.Int("bids", len(orderBook.Bids)),
-				zap.Int("asks", len(orderBook.Asks)))
+				zap.Float64("price", ticker.Price),
+				zap.Float64("change%", ticker.PriceChangePercent),
+				zap.Float64("volume", ticker.Volume))
 		}
 		if trade != nil {
 			logger.Debug("Published trade", 

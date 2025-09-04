@@ -158,15 +158,35 @@ run-postgres:
 
 .PHONY: run-vault
 run-vault:
-	@echo "Starting HashiCorp Vault..."
+	@echo "Starting HashiCorp Vault with persistent storage..."
+	@mkdir -p $(HOME)/.mExOms/vault-data
+	@if [ ! -f configs/vault-config.hcl ]; then \
+		echo "Creating Vault config..."; \
+		echo 'ui = true' > configs/vault-config.hcl; \
+		echo '' >> configs/vault-config.hcl; \
+		echo 'storage "file" {' >> configs/vault-config.hcl; \
+		echo '  path = "/vault/data"' >> configs/vault-config.hcl; \
+		echo '}' >> configs/vault-config.hcl; \
+		echo '' >> configs/vault-config.hcl; \
+		echo 'listener "tcp" {' >> configs/vault-config.hcl; \
+		echo '  address = "0.0.0.0:8200"' >> configs/vault-config.hcl; \
+		echo '  tls_disable = 1' >> configs/vault-config.hcl; \
+		echo '}' >> configs/vault-config.hcl; \
+		echo '' >> configs/vault-config.hcl; \
+		echo 'api_addr = "http://0.0.0.0:8200"' >> configs/vault-config.hcl; \
+	fi
 	docker run -d --name vault-oms -p 8200:8200 \
-		-e VAULT_DEV_ROOT_TOKEN_ID=root \
-		-e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
-		vault:latest
+		-v $(HOME)/.mExOms/vault-data:/vault/data \
+		-v $(PWD)/configs/vault-config.hcl:/vault/config/config.hcl \
+		--cap-add IPC_LOCK \
+		vault:latest server
+	@echo "Waiting for Vault to start..."
+	@sleep 3
+	@echo "Run './scripts/init-vault.sh' if this is first time setup"
 
 # Start all infrastructure
 .PHONY: infra-up
-infra-up: run-nats run-vault
+infra-up: run-nats run-redis run-vault
 	@echo "Infrastructure started"
 
 # Stop all infrastructure
@@ -175,6 +195,18 @@ infra-down:
 	@echo "Stopping infrastructure..."
 	docker stop nats-oms redis-oms postgres-oms vault-oms 2>/dev/null || true
 	docker rm nats-oms redis-oms postgres-oms vault-oms 2>/dev/null || true
+
+# Start entire OMS system
+.PHONY: start-all
+start-all:
+	@echo "Starting mExOms..."
+	@./scripts/start-oms.sh
+
+# Stop entire OMS system  
+.PHONY: stop-all
+stop-all:
+	@echo "Stopping mExOms..."
+	@./scripts/stop-oms.sh
 
 # Development helpers
 .PHONY: dev

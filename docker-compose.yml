@@ -1,4 +1,5 @@
 services:
+  # Infrastructure Services
   nats:
     image: nats:latest
     container_name: nats-oms
@@ -13,7 +14,23 @@ services:
       - oms-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8222/healthz"]
+      test: ["CMD", "nc", "-z", "localhost", "4222"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:latest
+    container_name: redis-oms
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - oms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -23,20 +40,25 @@ services:
     container_name: vault-oms
     cap_add:
       - IPC_LOCK
-    environment:
-      VAULT_DEV_ROOT_TOKEN_ID: root-token
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
     ports:
       - "8200:8200"
     volumes:
       - vault-data:/vault/data
+      - ./configs/vault-config.hcl:/vault/config/config.hcl
+    command: server
     networks:
       - oms-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8200/v1/sys/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   nats-data:
   vault-data:
+  redis-data:
 
 networks:
   oms-network:
