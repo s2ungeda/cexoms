@@ -516,8 +516,8 @@ func (s *Server) handleBalanceUpdate(data []byte) {
 
 	if msgData, err := json.Marshal(message); err == nil {
 		s.logger.Info("Broadcasting balance update", zap.Int("data_size", len(msgData)))
-		s.broadcastToSubscribers("positions", msgData)
-		s.collectors["positions"].addData(data)
+		s.broadcastToSubscribers("balance", msgData)
+		s.collectors["balance"].addData(data)
 	}
 }
 
@@ -609,6 +609,7 @@ func main() {
 			"market":    {name: "market", maxSize: 500},
 			"system":    {name: "system", maxSize: 100},
 			"risk":      {name: "risk", maxSize: 100},
+			"balance":   {name: "balance", maxSize: 100},
 		},
 	}
 
@@ -711,6 +712,7 @@ func (s *Server) handleSummaryRequest(w http.ResponseWriter, r *http.Request) {
 			"market":    len(s.collectors["market"].data),
 			"system":    len(s.collectors["system"].data),
 			"risk":      len(s.collectors["risk"].data),
+			"balance":   len(s.collectors["balance"].data),
 		},
 	}
 

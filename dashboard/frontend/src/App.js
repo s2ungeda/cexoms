@@ -34,7 +34,7 @@ function App() {
     WebSocketService.onConnect(() => {
       setWsConnected(true);
       // Subscribe to all streams
-      WebSocketService.subscribe(['orders', 'positions', 'market', 'system', 'risk']);
+      WebSocketService.subscribe(['orders', 'positions', 'market', 'system', 'risk', 'balance']);
     });
 
     WebSocketService.onDisconnect(() => {

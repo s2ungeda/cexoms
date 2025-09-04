@@ -42,7 +42,7 @@ fi
 
 if ! docker ps | grep -q "vault-oms"; then
     echo "Starting Vault..."
-    make run-vault > /dev/null 2>&1
+    docker-compose up -d vault > /dev/null 2>&1
     sleep 3
     # Initialize if first time
     if [ ! -f "$HOME/.mExOms/vault-keys.json" ]; then
@@ -52,22 +52,26 @@ if ! docker ps | grep -q "vault-oms"; then
         # Auto-unseal
         echo "Unsealing Vault..."
         VAULT_ADDR='http://localhost:8200'
-        UNSEAL_KEY=$(jq -r '.unseal_keys_b64[0] // .keys_base64[0]' "$HOME/.mExOms/vault-keys.json")
-        curl -s -X PUT $VAULT_ADDR/v1/sys/unseal \
-            -H "Content-Type: application/json" \
-            -d "{\"key\": \"$UNSEAL_KEY\"}" > /dev/null
+        UNSEAL_KEY=$(python3 -c "import json; print(json.load(open('$HOME/.mExOms/vault-keys.json'))['keys_base64'][0])" 2>/dev/null || echo "")
+        if [ -n "$UNSEAL_KEY" ]; then
+            curl -s -X PUT $VAULT_ADDR/v1/sys/unseal \
+                -H "Content-Type: application/json" \
+                -d "{\"key\": \"$UNSEAL_KEY\"}" > /dev/null
+        fi
     fi
 else
     echo "Vault is already running"
     # Check if sealed and unseal if needed
     VAULT_ADDR='http://localhost:8200'
-    SEALED=$(curl -s $VAULT_ADDR/v1/sys/health | jq -r .sealed 2>/dev/null || echo "true")
-    if [ "$SEALED" = "true" ] && [ -f "$HOME/.mExOms/vault-keys.json" ]; then
+    SEALED=$(curl -s $VAULT_ADDR/v1/sys/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('sealed', True))" 2>/dev/null || echo "true")
+    if [ "$SEALED" = "True" ] && [ -f "$HOME/.mExOms/vault-keys.json" ]; then
         echo "Unsealing Vault..."
-        UNSEAL_KEY=$(jq -r '.unseal_keys_b64[0] // .keys_base64[0]' "$HOME/.mExOms/vault-keys.json")
-        curl -s -X PUT $VAULT_ADDR/v1/sys/unseal \
-            -H "Content-Type: application/json" \
-            -d "{\"key\": \"$UNSEAL_KEY\"}" > /dev/null
+        UNSEAL_KEY=$(python3 -c "import json; print(json.load(open('$HOME/.mExOms/vault-keys.json'))['keys_base64'][0])" 2>/dev/null || echo "")
+        if [ -n "$UNSEAL_KEY" ]; then
+            curl -s -X PUT $VAULT_ADDR/v1/sys/unseal \
+                -H "Content-Type: application/json" \
+                -d "{\"key\": \"$UNSEAL_KEY\"}" > /dev/null
+        fi
     fi
 fi
 
@@ -82,20 +86,20 @@ if check_service "binance-market-full" "Market service"; then
     sleep 2
 fi
 
-# Balance service (only if API keys are configured)
-if [ ! -z "$BINANCE_API_KEY" ] || [ -f "/home/seunge/project/mExOms/.env" ]; then
-    if check_service "binance-spot-balance" "Balance service"; then
-        echo "Starting Balance Service..."
-        cd /home/seunge/project/mExOms
-        if [ -f ".env" ]; then
-            source .env
-            export BINANCE_API_KEY BINANCE_SECRET_KEY
-        fi
-        go run cmd/binance-spot-balance/main.go > logs/balance.log 2>&1 &
-        sleep 2
-    fi
-else
-    echo -e "${YELLOW}⚠️  Skipping Balance Service (No API keys configured)${NC}"
+# Balance service
+if check_service "binance-spot-balance" "Balance service"; then
+    echo "Starting Balance Service..."
+    cd /home/seunge/project/mExOms
+    go run cmd/binance-spot-balance/main.go > logs/balance.log 2>&1 &
+    sleep 2
+fi
+
+# Futures position service
+if check_service "binance-futures-position" "Futures position service"; then
+    echo "Starting Futures Position Service..."
+    cd /home/seunge/project/mExOms
+    go run cmd/binance-futures-position/main.go > logs/futures.log 2>&1 &
+    sleep 2
 fi
 
 # Dashboard
@@ -142,6 +146,7 @@ echo -e "WebSocket: ${GREEN}ws://localhost:8080/ws${NC}"
 echo -e "\n📝 Logs available at:"
 echo "  - Market: logs/market.log"
 echo "  - Balance: logs/balance.log"
+echo "  - Futures: logs/futures.log"
 echo "  - Dashboard: logs/dashboard-server.log"
 echo "  - Frontend: logs/frontend.log"
 

@@ -42,9 +42,12 @@ services:
       - IPC_LOCK
     ports:
       - "8200:8200"
+    environment:
+      - VAULT_ADDR=http://0.0.0.0:8200
+      - VAULT_API_ADDR=http://0.0.0.0:8200
     volumes:
-      - vault-data:/vault/data
-      - ./configs/vault-config.hcl:/vault/config/config.hcl
+      - vault-data:/vault/file
+      - ./configs/vault.hcl:/vault/config/vault.hcl
     command: server
     networks:
       - oms-network

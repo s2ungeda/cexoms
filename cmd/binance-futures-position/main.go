@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/adshao/go-binance/v2/futures"
@@ -37,12 +39,22 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	// Get API credentials from environment
-	apiKey := os.Getenv("BINANCE_API_KEY")
-	apiSecret := os.Getenv("BINANCE_SECRET_KEY")
+	// Get API credentials
+	apiKey := os.Getenv("BINANCE_FUTURES_API_KEY")
+	apiSecret := os.Getenv("BINANCE_FUTURES_SECRET_KEY")
 	
+	// If not in environment, try to get from Vault
 	if apiKey == "" || apiSecret == "" {
-		logger.Fatal("BINANCE_API_KEY and BINANCE_SECRET_KEY must be set")
+		logger.Info("API keys not found in environment, checking Vault...")
+		
+		// Try to get from Vault
+		apiKey, apiSecret = getKeysFromVault(logger)
+		
+		if apiKey == "" || apiSecret == "" {
+			logger.Fatal("Failed to get API keys from environment or Vault")
+		}
+		
+		logger.Info("Successfully retrieved API keys from Vault")
 	}
 
 	// Connect to NATS
@@ -200,4 +212,43 @@ func parseFloat(s string) float64 {
 func parseInt(s string) int {
 	d, _ := decimal.NewFromString(s)
 	return int(d.IntPart())
+}
+
+func getKeysFromVault(logger *zap.Logger) (string, string) {
+	// Read Vault token
+	tokenData, err := os.ReadFile(os.ExpandEnv("$HOME/.mExOms/vault-token"))
+	if err != nil {
+		logger.Error("Failed to read Vault token", zap.Error(err))
+		return "", ""
+	}
+	vaultToken := strings.TrimSpace(string(tokenData))
+	
+	// Make request to Vault
+	req, _ := http.NewRequest("GET", "http://localhost:8200/v1/secret/data/exchanges/binance_futures", nil)
+	req.Header.Set("X-Vault-Token", vaultToken)
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Error("Failed to connect to Vault", zap.Error(err))
+		return "", ""
+	}
+	defer resp.Body.Close()
+	
+	// Parse response
+	var vaultResp struct {
+		Data struct {
+			Data map[string]string `json:"data"`
+		} `json:"data"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&vaultResp); err != nil {
+		logger.Error("Failed to decode Vault response", zap.Error(err))
+		return "", ""
+	}
+	
+	apiKey := vaultResp.Data.Data["api_key"]
+	secretKey := vaultResp.Data.Data["secret_key"]
+	
+	return apiKey, secretKey
 }

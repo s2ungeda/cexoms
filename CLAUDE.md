@@ -257,10 +257,21 @@ When working on this project, create daily work logs following these rules:
 - Created `scripts/start-oms.sh` and `scripts/stop-oms.sh`
 - Automatic service health checking and log management
 
-### Vault Persistent Storage
+### Vault Persistent Storage (Critical for API Key Management)
 - Vault now uses file-based persistent storage at `~/.mExOms/vault-data/`
+- Configuration: Production mode with file backend (NOT dev mode)
 - Automatic initialization and unseal on startup
 - API keys persist across system restarts
+- **Important**: Vault data survives Docker restarts and system reboots
+- Unseal keys stored at `~/.mExOms/vault-data/vault-unseal-keys.json`
+- Root token stored at `~/.mExOms/vault-data/root-token`
+
+### Vault Configuration Details
+- Storage backend: `file` (persistent)
+- Data path: `~/.mExOms/vault-data/`
+- Docker volume mount: `~/.mExOms/vault-data:/vault/file`
+- Auto-unseal: Yes (using stored unseal keys)
+- Production mode: Enabled (no more dev mode issues)
 
 ### Market Data Changes
 - Changed from orderbook (depth20) to 24hr ticker stream

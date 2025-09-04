@@ -80,11 +80,11 @@ const (
 type FeedFormat string
 
 const (
-	FormatJSON  FeedFormat = "json"
-	FormatCSV   FeedFormat = "csv"
-	FormatSTIX  FeedFormat = "stix"
-	FormatTAXII FeedFormat = "taxii"
-	FormatText  FeedFormat = "text"
+	FeedFormatJSON  FeedFormat = "json"
+	FeedFormatCSV   FeedFormat = "csv"
+	FeedFormatSTIX  FeedFormat = "stix"
+	FeedFormatTAXII FeedFormat = "taxii"
+	FeedFormatText  FeedFormat = "text"
 )
 
 // IPReputation represents IP reputation data
@@ -163,7 +163,7 @@ func (ti *ThreatIntelligence) initializeFeeds() {
 		Name:       "Abuse.ch URLhaus",
 		URL:        "https://urlhaus.abuse.ch/api/",
 		Type:       FeedTypeOpen,
-		Format:     FormatJSON,
+		Format:     FeedFormatJSON,
 		UpdateFreq: 1 * time.Hour,
 		Enabled:    true,
 		Priority:   1,
@@ -174,7 +174,7 @@ func (ti *ThreatIntelligence) initializeFeeds() {
 		Name:       "Abuse.ch Feodo Tracker",
 		URL:        "https://feodotracker.abuse.ch/api/",
 		Type:       FeedTypeOpen,
-		Format:     FormatJSON,
+		Format:     FeedFormatJSON,
 		UpdateFreq: 6 * time.Hour,
 		Enabled:    true,
 		Priority:   1,
@@ -185,7 +185,7 @@ func (ti *ThreatIntelligence) initializeFeeds() {
 		Name:       "AlienVault OTX",
 		URL:        "https://otx.alienvault.com/api/v1/",
 		Type:       FeedTypeOpen,
-		Format:     FormatJSON,
+		Format:     FeedFormatJSON,
 		UpdateFreq: 4 * time.Hour,
 		Enabled:    false, // Requires API key
 		Priority:   2,
@@ -197,7 +197,7 @@ func (ti *ThreatIntelligence) initializeFeeds() {
 		Name:       "Internal Blocklist",
 		URL:        "internal://blocklist",
 		Type:       FeedTypeInternal,
-		Format:     FormatJSON,
+		Format:     FeedFormatJSON,
 		UpdateFreq: 30 * time.Minute,
 		Enabled:    true,
 		Priority:   0, // Highest priority

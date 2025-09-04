@@ -23,17 +23,17 @@ if ! curl -s $VAULT_ADDR/v1/sys/health > /dev/null 2>&1; then
 fi
 
 # Check if already initialized
-INIT_STATUS=$(curl -s $VAULT_ADDR/v1/sys/init | jq -r .initialized)
+INIT_STATUS=$(curl -s $VAULT_ADDR/v1/sys/init | python3 -c "import sys,json; print(json.load(sys.stdin).get('initialized', False))" 2>/dev/null || echo "false")
 
 if [ "$INIT_STATUS" = "true" ]; then
     echo -e "${YELLOW}Vault is already initialized${NC}"
     
     # Try to unseal if needed
-    SEALED=$(curl -s $VAULT_ADDR/v1/sys/health | jq -r .sealed)
-    if [ "$SEALED" = "true" ]; then
+    SEALED=$(curl -s $VAULT_ADDR/v1/sys/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('sealed', True))" 2>/dev/null || echo "true")
+    if [ "$SEALED" = "True" ]; then
         if [ -f "$VAULT_KEYS_FILE" ]; then
             echo "Unsealing Vault..."
-            UNSEAL_KEY=$(jq -r '.unseal_keys_b64[0]' "$VAULT_KEYS_FILE")
+            UNSEAL_KEY=$(python3 -c "import json; data=json.load(open('$VAULT_KEYS_FILE')); print(data.get('unseal_keys_b64', data.get('keys_base64', []))[0])" 2>/dev/null)
             curl -s -X PUT $VAULT_ADDR/v1/sys/unseal \
                 -H "Content-Type: application/json" \
                 -d "{\"key\": \"$UNSEAL_KEY\"}" > /dev/null
@@ -60,8 +60,8 @@ else
     chmod 600 "$VAULT_KEYS_FILE"
     
     # Extract keys
-    UNSEAL_KEY=$(echo "$INIT_OUTPUT" | jq -r '.keys_base64[0]')
-    ROOT_TOKEN=$(echo "$INIT_OUTPUT" | jq -r '.root_token')
+    UNSEAL_KEY=$(echo "$INIT_OUTPUT" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('keys_base64', [])[0])")
+    ROOT_TOKEN=$(echo "$INIT_OUTPUT" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('root_token', ''))")
     
     # Unseal Vault
     echo "Unsealing Vault..."
@@ -76,7 +76,7 @@ fi
 
 # Get root token
 if [ -f "$VAULT_KEYS_FILE" ]; then
-    ROOT_TOKEN=$(jq -r '.root_token' "$VAULT_KEYS_FILE")
+    ROOT_TOKEN=$(python3 -c "import json; print(json.load(open('$VAULT_KEYS_FILE')).get('root_token', ''))" 2>/dev/null)
     
     # Enable KV v2 secrets engine if not already enabled
     echo -e "\n${GREEN}Setting up secrets engine...${NC}"

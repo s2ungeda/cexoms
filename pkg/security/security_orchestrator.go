@@ -3,6 +3,7 @@ package security
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -439,7 +440,7 @@ func (so *SecurityOrchestrator) checkComplianceImpact(ctx context.Context, incid
 	// Check if incident affects compliance
 	if incident.Type == "data_exfiltration" || strings.Contains(incident.Description, "personal data") {
 		// GDPR breach notification may be required
-		so.complianceManager.LogComplianceEvent(ctx, "GDPR", "potential_breach", "under_investigation", map[string]interface{}{
+		so.auditLogger.LogComplianceEvent(ctx, "GDPR", "potential_breach", "under_investigation", map[string]interface{}{
 			"incident_id": incident.ID,
 			"severity":    incident.Severity,
 		})
@@ -447,7 +448,7 @@ func (so *SecurityOrchestrator) checkComplianceImpact(ctx context.Context, incid
 	
 	// Check MiFID II implications for trading incidents
 	if incident.Type == "trading" || incident.Type == "market_manipulation" {
-		so.complianceManager.LogComplianceEvent(ctx, "MiFID2", "trading_incident", "reported", map[string]interface{}{
+		so.auditLogger.LogComplianceEvent(ctx, "MiFID2", "trading_incident", "reported", map[string]interface{}{
 			"incident_id": incident.ID,
 		})
 	}

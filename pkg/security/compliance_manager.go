@@ -455,6 +455,7 @@ func (cm *ComplianceManager) handlePortabilityRequest(ctx context.Context, reque
 		"user_id": request.UserID,
 	}
 	
+	request.Details["export_data"] = exportData
 	request.Details["export_format"] = "JSON"
 	request.ProcessingLog = append(request.ProcessingLog, "Data exported in portable format")
 	
@@ -470,7 +471,7 @@ func (cm *ComplianceManager) handleRectifyRequest(ctx context.Context, request *
 	}
 	
 	for field, newValue := range corrections {
-		request.ProcessingLog = append(request.ProcessingLog, fmt.Sprintf("Updated %s", field))
+		request.ProcessingLog = append(request.ProcessingLog, fmt.Sprintf("Updated %s to %v", field, newValue))
 	}
 	
 	return nil

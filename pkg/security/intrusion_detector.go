@@ -680,7 +680,7 @@ func (id *IntrusionDetector) correlateAlerts() {
 	}
 	
 	// Create incidents for significant alert groups
-	for key, alerts := range alertGroups {
+	for _, alerts := range alertGroups {
 		if len(alerts) >= id.config.IncidentThreshold {
 			incident := id.createIncident(alerts)
 			id.incidents[incident.ID] = incident
@@ -872,7 +872,7 @@ func (id *IntrusionDetector) collectMetrics() {
 	totalDetectionTime := time.Duration(0)
 	detectionCount := 0
 	
-	for _, alert := range id.alerts {
+	for range id.alerts {
 		// This would calculate actual detection time
 		totalDetectionTime += 5 * time.Second // Simulated
 		detectionCount++
